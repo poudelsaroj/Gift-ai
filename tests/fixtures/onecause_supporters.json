@@ -1,0 +1,16 @@
+{
+  "supporters": [
+    {
+      "id": 7001,
+      "firstName": "Alex",
+      "lastName": "Rivera",
+      "email": "alex@example.org",
+      "updatedAt": "2026-03-29T10:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "total_pages": 1
+  }
+}
+

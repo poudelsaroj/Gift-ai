@@ -1,0 +1,41 @@
+{
+  "source_name": "OneCause Production",
+  "source_system": "onecause",
+  "acquisition_mode": "api",
+  "auth_type": "api_key",
+  "enabled": true,
+  "schedule": "0 */6 * * *",
+  "parser_name": "json_metadata",
+  "dedupe_keys": ["external_object_id", "checksum_sha256"],
+  "notes": "Seed config for OneCause API ingestion.",
+  "config_json": {
+    "api_base_url": "https://api.onecause.com",
+    "api_key": "REPLACE_WITH_REAL_ONECAUSE_API_KEY",
+    "organization_id": "REPLACE_WITH_ONECAUSE_ORG_ID",
+    "page_size": 100,
+    "initial_sync_start": "2026-01-01T00:00:00Z",
+    "enabled_object_types": ["paid_activities", "supporters", "events", "fundraising_pages"],
+    "fetch_window_strategy": "updated_at",
+    "timezone": "UTC",
+    "request_timeout_seconds": 30,
+    "auth_header_name": "X-API-Key",
+    "test_endpoint": "/organizations/{organization_id}/events",
+    "endpoint_templates": {
+      "paid_activities": "/organizations/{organization_id}/paid-activities",
+      "supporters": "/organizations/{organization_id}/supporters",
+      "events": "/organizations/{organization_id}/events",
+      "fundraising_pages": "/organizations/{organization_id}/fundraising-pages"
+    },
+    "incremental_param_start": "updated_after",
+    "incremental_param_end": "updated_before",
+    "pagination_param_page": "page",
+    "pagination_param_page_size": "page_size",
+    "list_key_overrides": {
+      "paid_activities": "paidActivities",
+      "supporters": "supporters",
+      "events": "events",
+      "fundraising_pages": "fundraisingPages"
+    }
+  }
+}
+

@@ -1,0 +1,2 @@
+"""Shared-folder connector package."""
+

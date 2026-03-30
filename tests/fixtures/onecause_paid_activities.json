@@ -1,0 +1,29 @@
+{
+  "paidActivities": [
+    {
+      "id": 101,
+      "eventId": 5001,
+      "supporterId": 7001,
+      "amount": 125.00,
+      "currency": "USD",
+      "paidAt": "2026-03-29T10:15:00Z",
+      "updatedAt": "2026-03-29T10:15:00Z",
+      "status": "paid"
+    },
+    {
+      "id": 102,
+      "eventId": 5001,
+      "supporterId": 7002,
+      "amount": 75.00,
+      "currency": "USD",
+      "paidAt": "2026-03-29T11:00:00Z",
+      "updatedAt": "2026-03-29T11:00:00Z",
+      "status": "paid"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "total_pages": 1
+  }
+}
+
