@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     onecause_client_id: str | None = Field(default=None, alias="ONECAUSE_CLIENT_ID")
     onecause_access_token: str | None = Field(default=None, alias="ONECAUSE_ACCESS_TOKEN")
     onecause_challenge_id: str | None = Field(default=None, alias="ONECAUSE_CHALLENGE_ID")
+    everyorg_public_api_base_url: str = Field(
+        default="https://partners.every.org",
+        alias="EVERYORG_PUBLIC_API_BASE_URL",
+    )
+    everyorg_public_key: str | None = Field(default=None, alias="EVERYORG_PUBLIC_KEY")
+    everyorg_private_key: str | None = Field(default=None, alias="EVERYORG_PRIVATE_KEY")
+    everyorg_webhook_token: str | None = Field(default=None, alias="EVERYORG_WEBHOOK_TOKEN")
+    everyorg_webhook_kind: str | None = Field(default=None, alias="EVERYORG_WEBHOOK_KIND")
+    everyorg_nonprofit_slug: str | None = Field(default=None, alias="EVERYORG_NONPROFIT_SLUG")
     enable_inprocess_scheduler: bool = Field(default=True, alias="ENABLE_INPROCESS_SCHEDULER")
     scheduler_poll_seconds: int = Field(default=60, alias="SCHEDULER_POLL_SECONDS")
 

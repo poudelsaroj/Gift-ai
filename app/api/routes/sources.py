@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.connectors.everyorg.config_resolver import resolve_everyorg_config
 from app.connectors.registry import ConnectorRegistry
 from app.connectors.onecause.config_resolver import resolve_onecause_config
 from app.models.source_config import SourceConfig
@@ -41,6 +42,13 @@ def create_source(payload: SourceConfigCreate, db: Session = Depends(get_db)) ->
         try:
             source_payload = payload.model_copy(
                 update={"config_json": resolve_onecause_config(payload.config_json)}
+            )
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if payload.source_system == "everyorg":
+        try:
+            source_payload = payload.model_copy(
+                update={"config_json": resolve_everyorg_config(payload.config_json)}
             )
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -83,12 +91,17 @@ def update_source(
             updated_config = resolve_onecause_config(updated_config)
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if source.source_system == "everyorg":
+        try:
+            updated_config = resolve_everyorg_config(updated_config)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
         connector = ConnectorRegistry.get_connector(source.source_system, updated_config)
         connector.validate_config()
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.config_json is not None and source.source_system == "onecause":
+    if payload.config_json is not None and source.source_system in {"onecause", "everyorg"}:
         payload = payload.model_copy(update={"config_json": updated_config})
     return source_service.update(db, source, payload)
 
@@ -114,6 +127,14 @@ def trigger_source(
 ) -> TriggerIngestionResponse:
     """Trigger an ingestion run for a source."""
     source = _get_source_or_404(db, source_id)
+    if source.acquisition_mode == "webhook":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "This source is webhook-only. Do not trigger it manually; "
+                "send data to the configured webhook endpoint instead."
+            ),
+        )
     run = ingestion_service.execute(
         db,
         source,

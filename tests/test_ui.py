@@ -12,3 +12,6 @@ def test_operator_console_renders(client: TestClient) -> None:
     assert "Recent Raw Objects" in response.text
     assert "Normalized Gifts" in response.text
     assert "Normalized Supporters" in response.text
+    assert "Every.org Dashboard Import" in response.text
+    assert "Every.org Key Demo" in response.text
+    assert "Every.org Direct Endpoints" in response.text

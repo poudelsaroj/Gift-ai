@@ -17,12 +17,17 @@ class NormalizationService:
 
     def normalize_raw_object(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
         """Normalize a raw OneCause object into read models."""
-        if raw_object.source_system != "onecause":
+        if raw_object.source_system == "onecause":
+            if raw_object.external_object_type == "paid_activities":
+                self._upsert_gift(db, raw_object, payload)
+            if raw_object.external_object_type == "supporters":
+                self._upsert_supporter(db, raw_object, payload)
             return
-        if raw_object.external_object_type == "paid_activities":
-            self._upsert_gift(db, raw_object, payload)
-        if raw_object.external_object_type == "supporters":
-            self._upsert_supporter(db, raw_object, payload)
+        if raw_object.source_system == "everyorg" and raw_object.external_object_type in {
+            "donation",
+            "donation_export",
+        }:
+            self._upsert_everyorg_gift(db, raw_object, payload)
 
     def list_gifts(self, db: Session, offset: int = 0, limit: int = 100) -> tuple[list[StagingGift], int]:
         items = list(db.scalars(select(StagingGift).order_by(StagingGift.id.desc()).offset(offset).limit(limit)))
@@ -92,6 +97,36 @@ class NormalizationService:
         record.event_ids = ",".join(str(item) for item in event_ids) if isinstance(event_ids, list) else None
         accepted = payload.get("accepted")
         record.accepted = str(accepted).lower() if accepted is not None else None
+        db.add(record)
+
+    def _upsert_everyorg_gift(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
+        record = db.scalar(select(StagingGift).where(StagingGift.raw_object_id == raw_object.id))
+        if record is None:
+            record = StagingGift(raw_object_id=raw_object.id)
+
+        nonprofit = payload.get("toNonprofit") or {}
+        fundraiser = payload.get("fromFundraiser") or {}
+        donor_name = " ".join(filter(None, [payload.get("firstName"), payload.get("lastName")])) or None
+        memo_parts = [
+            payload.get("designation"),
+            fundraiser.get("title") if isinstance(fundraiser, dict) else None,
+            payload.get("partnerDonationId"),
+        ]
+
+        record.gift_id = str(payload.get("chargeId")) if payload.get("chargeId") is not None else None
+        record.source_channel = raw_object.source_channel
+        record.source_system = raw_object.source_system
+        record.source_file_id = nonprofit.get("slug") if isinstance(nonprofit, dict) else None
+        record.donor_name = donor_name
+        record.amount = self._to_decimal(payload.get("amount"))
+        record.currency = payload.get("currency")
+        record.gift_date = self._parse_date(payload.get("donationDate"))
+        record.payment_type = payload.get("paymentMethod")
+        record.gift_type = "donation"
+        record.memo = " | ".join([part for part in memo_parts if part]) or None
+        record.raw_payload_ref = raw_object.raw_payload_ref
+        record.status = raw_object.duplicate_status
+        record.confidence_score = 0.98
         db.add(record)
 
     def _to_decimal(self, value: Any) -> Decimal | None:

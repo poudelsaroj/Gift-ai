@@ -24,11 +24,14 @@ Requires-Dist: ruff>=0.5.0; extra == "dev"
 
 Connector-first FastAPI backend for nonprofit gift-source ingestion. Phase 1 is focused on reliable data fetching, raw payload retention, ingestion run tracking, and duplicate-aware preprocessing for a single organization.
 
+A small operator console is available at `/` for common source and sync actions, while Swagger remains available at `/docs`.
+
 ## Architecture
 
 The project is intentionally modular and single-organization only:
 
 - `app/api`: operator/developer-facing HTTP endpoints.
+- `app/api/routes/ui.py`: lightweight operator console for manual workflows.
 - `app/connectors`: pluggable ingestion connectors. OneCause is the first real implementation; email, shared-folder, and portal-export are scaffolded as first-class non-API patterns.
 - `app/services`: orchestration and persistence services for sources, raw objects, and ingestion runs.
 - `app/storage`: raw payload storage abstraction. Filesystem storage is the initial backend.
@@ -81,17 +84,21 @@ scripts/
 ### Prerequisites
 
 - Python 3.12+
-- PostgreSQL 16+
 
-### Local Environment
+PostgreSQL remains the intended production database, but the current local development setup in this workspace uses SQLite for a simpler manual run flow.
+
+### Local Environment (Manual SQLite Setup)
 
 1. Copy `.env.example` to `.env`.
-2. Set `DATABASE_URL`.
+2. For local manual development, set:
+   - `DATABASE_URL=sqlite:///./gift_ingestion.db`
 3. Set `RAW_STORAGE_ROOT`.
 4. Install dependencies:
 
 ```bash
-python3 -m pip install -e .[dev]
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
 ```
 
 5. Run migrations:
@@ -106,11 +113,27 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-### Docker Compose
+7. Open:
+
+- UI: `http://localhost:8000/`
+- Swagger: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/api/v1/health`
+
+### Local Environment (requirements.txt Alternative)
+
+If another developer prefers not to install the project in editable mode:
 
 ```bash
-docker compose up --build
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload
 ```
+
+### Docker Compose
+
+`docker-compose.yml` is still included for teams that want containerized app + Postgres locally, but the simplest current handoff path is the manual SQLite setup above.
 
 ## Environment Variables
 
@@ -124,8 +147,20 @@ Defined in `.env.example`:
 - `LOG_LEVEL`
 - `DEFAULT_REQUEST_TIMEOUT_SECONDS`
 - `ONECAUSE_DEFAULT_BASE_URL`
+- `ONECAUSE_API_BASE_URL`
+- `ONECAUSE_API_KEY`
+- `ONECAUSE_ORGANIZATION_ID`
+- `ONECAUSE_CLIENT_ID`
+- `ONECAUSE_ACCESS_TOKEN`
+- `ONECAUSE_CHALLENGE_ID`
+- `ENABLE_INPROCESS_SCHEDULER`
+- `SCHEDULER_POLL_SECONDS`
 
 Keep OneCause API secrets in environment variables or source configuration injected at runtime. Do not commit live credentials. If you maintain separate documentation-site credentials for the OneCause help center, keep those in local `.env` only; the app itself uses API credentials, not docs login credentials.
+
+The app now resolves missing OneCause source config fields from `.env` during source creation and update. That means you can keep `ONECAUSE_API_BASE_URL`, `ONECAUSE_API_KEY`, and `ONECAUSE_ORGANIZATION_ID` in `.env` and send a minimal `config_json` when creating a OneCause source.
+It also supports a portal-style fallback using `ONECAUSE_CLIENT_ID` plus `ONECAUSE_ACCESS_TOKEN` when you only have access to the authenticated client endpoints visible in the browser network tab.
+For the live portal integration in this workspace, `ONECAUSE_CHALLENGE_ID` is also required because donations and participants are filtered by challenge.
 
 ## Migrations
 
@@ -144,6 +179,33 @@ make test
 make lint
 make migrate
 make seed
+```
+
+## Recommended Local Run Flow
+
+This is the simplest local path for a new developer:
+
+```bash
+git clone <repo>
+cd Gift
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+cp .env.example .env
+```
+
+Then edit `.env` so it contains:
+
+```env
+DATABASE_URL=sqlite:///./gift_ingestion.db
+RAW_STORAGE_ROOT=./raw_storage
+```
+
+Then run:
+
+```bash
+alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API Surface
@@ -167,10 +229,14 @@ Base prefix: `/api/v1`
 - `GET /raw-objects/{id}`
 - `GET /raw-objects/{id}/payload`
 - `POST /raw-objects/{id}/reprocess`
+- `GET /normalized/gifts`
+- `GET /normalized/supporters`
+- `POST /scheduler/run-due`
+- `GET /` operator console
 
 ## OneCause Configuration
 
-The OneCause connector is implemented as an authenticated HTTP connector with configurable endpoint templates. This keeps the app usable even if your OneCause account’s exact resource paths or list keys differ from the defaults exposed in the help center.
+The OneCause connector is implemented as an authenticated HTTP connector with configurable endpoint templates and explicit auth modes. This keeps the app usable even if your OneCause account’s exact resource paths or list keys differ from the defaults exposed in the help center.
 
 Minimum config:
 
@@ -182,11 +248,27 @@ Minimum config:
 }
 ```
 
+If `ONECAUSE_API_BASE_URL`, `ONECAUSE_API_KEY`, and `ONECAUSE_ORGANIZATION_ID` are present in `.env`, you can create a OneCause source with a minimal payload such as:
+
+```json
+{
+  "source_name": "OneCause Primary",
+  "source_system": "onecause",
+  "acquisition_mode": "api",
+  "auth_type": "api_key",
+  "enabled": true,
+  "config_json": {}
+}
+```
+
 Recommended config fields:
 
+- `auth_mode`
 - `api_base_url`
 - `api_key`
 - `organization_id`
+- `client_id`
+- `challenge_id`
 - `page_size`
 - `initial_sync_start`
 - `enabled_object_types`
@@ -206,6 +288,39 @@ Use `sample_data/onecause_source.seed.json` as the reference shape.
 
 Because the official help article at `https://help.onecause.com/s/article/api-documentation` is login-gated, endpoint templates and top-level list keys are configurable in the source config instead of being frozen into the application.
 
+If you are deriving values from browser network traffic during initial setup:
+
+- `https://p2p.onecause.com/api/clients/<id>/...` indicates the client/org identifier.
+- The `<id>` value can be used as `ONECAUSE_CLIENT_ID`.
+- The active challenge id from the donations/participants requests can be used as `ONECAUSE_CHALLENGE_ID`.
+- The `x-access-token` header can be used as `ONECAUSE_ACCESS_TOKEN`.
+- Do not use the `cookie` header for backend auth.
+
+Example from a browser request:
+
+- Request URL: `https://p2p.onecause.com/api/clients/6706d23590dd062cef1357f5/admin-details`
+- `ONECAUSE_CLIENT_ID=6706d23590dd062cef1357f5`
+- `ONECAUSE_API_BASE_URL=https://p2p.onecause.com`
+- `ONECAUSE_ACCESS_TOKEN=<value from x-access-token>`
+- `ONECAUSE_CHALLENGE_ID=67338b7fb2c8096f058e0460`
+
+This portal-token approach is useful when documented API credentials are not available, but it is inherently less stable than an official API key and may expire. Keep it as a fallback mode, not the preferred long-term connector design.
+
+Preferred OneCause auth order:
+
+1. `auth_mode=api_key` with a documented API key and organization id.
+2. `auth_mode=access_token` with a persisted client id and refreshed access token.
+3. Never use browser cookies as connector configuration.
+
+## Normalized Views
+
+Phase 1 now persists lightweight normalized read models for operator visibility:
+
+- `staging_gifts` stores normalized OneCause donation records
+- `normalized_supporters` stores normalized OneCause participant/supporter records
+
+These are read-model tables for operations and reporting. Raw payload retention remains the source of truth for lineage.
+
 ## Ingestion Runs
 
 Each run is persisted in `ingestion_runs` and stores:
@@ -217,6 +332,19 @@ Each run is persisted in `ingestion_runs` and stores:
 - connector metadata
 
 The initial worker is synchronous and intentionally simple. You can later swap `app/workers/job_runner.py` with Celery, RQ, Dramatiq, or another queue without changing connector code or the API contract.
+
+## Scheduling
+
+For the current OneCause portal integration, use scheduled polling rather than webhooks.
+
+Supported `schedule` values:
+
+- `manual`
+- `daily`
+- `hourly`
+- `every_6_hours`
+
+When `ENABLE_INPROCESS_SCHEDULER=true`, the app runs a lightweight background scheduler and checks due sources every `SCHEDULER_POLL_SECONDS`.
 
 ## Raw Storage
 

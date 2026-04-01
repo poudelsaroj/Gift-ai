@@ -8,10 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.connectors.registry import ConnectorRegistry
-from app.connectors.base.types import FetchRequest
+from app.connectors.base.types import FetchRequest, RawFetchItem
 from app.core.config import get_settings
 from app.dedupe.service import DedupeService
 from app.models.ingestion_run import IngestionRun
+from app.models.raw_object import RawObject
 from app.models.source_config import SourceConfig
 from app.storage.filesystem import FilesystemStorage
 from app.utils.security import redact_config
@@ -87,47 +88,10 @@ class IngestionService:
 
         try:
             result = connector.fetch_incremental(request)
-            duplicates = 0
-            for item in result.items:
-                fetched_at = datetime.now(tz=UTC)
-                storage_path = self.storage.save_json_payload(
-                    source_system=source.source_system,
-                    run_id=run.id,
-                    object_type=item.object_type,
-                    object_id=item.external_object_id,
-                    payload=item.payload if isinstance(item.payload, (dict, list)) else {"raw": item.payload},
-                    fetched_at=fetched_at,
-                )
-                raw_object = self.raw_object_service.create(
-                    db,
-                    source_id=source.id,
-                    ingestion_run_id=run.id,
-                    source_channel=item.source_channel,
-                    source_system=source.source_system,
-                    external_object_type=item.object_type,
-                    external_object_id=item.external_object_id,
-                    external_parent_id=item.external_parent_id,
-                    event_timestamp=item.event_timestamp,
-                    original_filename=item.original_filename,
-                    content_type=item.content_type,
-                    payload_storage_path=storage_path,
-                    raw_payload_ref=storage_path,
-                    metadata_json=item.metadata,
-                    payload=item.payload,
-                )
-                db.flush()
-                decision = self.dedupe_service.detect(db, raw_object)
-                raw_object.duplicate_status = decision.status
-                raw_object.duplicate_of_id = decision.duplicate_of_id
-                raw_object.dedupe_reason = decision.reason
-                if decision.status != "unique":
-                    duplicates += 1
-                db.add(raw_object)
-                if isinstance(item.payload, dict):
-                    self.normalization_service.normalize_raw_object(db, raw_object, item.payload)
+            raw_objects, duplicates = self._persist_items(db, source, run, result.items)
             run.status = "completed"
             run.completed_at = datetime.now(tz=UTC)
-            run.records_fetched_count = len(result.items)
+            run.records_fetched_count = len(raw_objects)
             run.duplicates_detected_count = duplicates
             run.cursor_state = result.cursor_state
             run.metadata_json = result.metadata
@@ -141,6 +105,113 @@ class IngestionService:
                 records_fetched_count=run.records_fetched_count,
                 duplicates_detected_count=run.duplicates_detected_count,
             )
+            return run
+        except Exception as exc:
+            run.status = "failed"
+            run.completed_at = datetime.now(tz=UTC)
+            run.error_message = str(exc)
+            db.add(run)
+            db.commit()
+            logger.exception(
+                "ingestion_run_failed",
+                source_id=source.id,
+                ingestion_run_id=run.id,
+                error_message=str(exc),
+            )
+            raise
+
+    def ingest_webhook_payload(
+        self,
+        db: Session,
+        source: SourceConfig,
+        *,
+        object_type: str,
+        payload: dict[str, Any] | list[Any] | str,
+        external_object_id: str | None = None,
+        external_parent_id: str | None = None,
+        event_timestamp: datetime | None = None,
+        content_type: str = "application/json",
+        source_channel: str = "webhook",
+        original_filename: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> tuple[IngestionRun, RawObject]:
+        """Persist a single webhook payload as an ingestion run and raw object."""
+        run = self.create_run(db, source.id, run_type="incremental", trigger_type="webhook")
+        run.status = "running"
+        run.started_at = datetime.now(tz=UTC)
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        try:
+            raw_item = RawFetchItem(
+                object_type=object_type,
+                external_object_id=external_object_id,
+                external_parent_id=external_parent_id,
+                payload=payload,
+                event_timestamp=event_timestamp,
+                content_type=content_type,
+                source_channel=source_channel,
+                original_filename=original_filename,
+                metadata=metadata_json or {},
+            )
+            raw_objects, duplicates = self._persist_items(
+                db,
+                source,
+                run,
+                [raw_item],
+            )
+            run.status = "completed"
+            run.completed_at = datetime.now(tz=UTC)
+            run.records_fetched_count = len(raw_objects)
+            run.duplicates_detected_count = duplicates
+            run.metadata_json = {"webhook_object_type": object_type}
+            db.add(run)
+            db.commit()
+            db.refresh(run)
+            return run, raw_objects[0]
+        except Exception as exc:
+            run.status = "failed"
+            run.completed_at = datetime.now(tz=UTC)
+            run.error_message = str(exc)
+            db.add(run)
+            db.commit()
+            logger.exception(
+                "ingestion_run_failed",
+                source_id=source.id,
+                ingestion_run_id=run.id,
+                error_message=str(exc),
+            )
+            raise
+
+    def ingest_items(
+        self,
+        db: Session,
+        source: SourceConfig,
+        *,
+        items: list[RawFetchItem],
+        run_type: str = "full",
+        trigger_type: str = "manual_upload",
+        metadata_json: dict[str, Any] | None = None,
+    ) -> IngestionRun:
+        """Persist a prepared batch of raw items as a single ingestion run."""
+        run = self.create_run(db, source.id, run_type=run_type, trigger_type=trigger_type)
+        run.status = "running"
+        run.started_at = datetime.now(tz=UTC)
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        try:
+            raw_objects, duplicates = self._persist_items(db, source, run, items)
+            run.status = "completed"
+            run.completed_at = datetime.now(tz=UTC)
+            run.records_fetched_count = len(raw_objects)
+            run.duplicates_detected_count = duplicates
+            run.metadata_json = metadata_json or {}
+            db.add(run)
+            db.commit()
+            db.refresh(run)
             return run
         except Exception as exc:
             run.status = "failed"
@@ -192,3 +263,52 @@ class IngestionService:
             .limit(1)
         )
         return latest_run.cursor_state if latest_run else None
+
+    def _persist_items(
+        self,
+        db: Session,
+        source: SourceConfig,
+        run: IngestionRun,
+        items: list[RawFetchItem],
+    ) -> tuple[list[RawObject], int]:
+        raw_objects: list[RawObject] = []
+        duplicates = 0
+        for item in items:
+            fetched_at = datetime.now(tz=UTC)
+            storage_path = self.storage.save_json_payload(
+                source_system=source.source_system,
+                run_id=run.id,
+                object_type=item.object_type,
+                object_id=item.external_object_id,
+                payload=item.payload if isinstance(item.payload, (dict, list)) else {"raw": item.payload},
+                fetched_at=fetched_at,
+            )
+            raw_object = self.raw_object_service.create(
+                db,
+                source_id=source.id,
+                ingestion_run_id=run.id,
+                source_channel=item.source_channel,
+                source_system=source.source_system,
+                external_object_type=item.object_type,
+                external_object_id=item.external_object_id,
+                external_parent_id=item.external_parent_id,
+                event_timestamp=item.event_timestamp,
+                original_filename=item.original_filename,
+                content_type=item.content_type,
+                payload_storage_path=storage_path,
+                raw_payload_ref=storage_path,
+                metadata_json=item.metadata,
+                payload=item.payload,
+            )
+            db.flush()
+            decision = self.dedupe_service.detect(db, raw_object)
+            raw_object.duplicate_status = decision.status
+            raw_object.duplicate_of_id = decision.duplicate_of_id
+            raw_object.dedupe_reason = decision.reason
+            if decision.status != "unique":
+                duplicates += 1
+            db.add(raw_object)
+            if isinstance(item.payload, dict):
+                self.normalization_service.normalize_raw_object(db, raw_object, item.payload)
+            raw_objects.append(raw_object)
+        return raw_objects, duplicates

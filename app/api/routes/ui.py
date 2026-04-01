@@ -401,6 +401,98 @@ def operator_console() -> str:
     </section>
 
     <section class="panel" style="margin-top:20px;">
+      <h2>Every.org Public Profiles</h2>
+      <div class="subhead">Live public nonprofit data fetched from Every.org for each configured Every.org source.</div>
+      <div class="list" id="everyorg_profiles"></div>
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
+      <h2>Every.org Dashboard Import</h2>
+      <div class="subhead">Historical donation backfill from the Every.org admin Download CSV. This is the reliable path for past dashboard donations because the public docs do not expose a historical donations list endpoint.</div>
+      <div class="stack">
+        <div class="row">
+          <label for="everyorg_import_source">Every.org source</label>
+          <select id="everyorg_import_source"></select>
+        </div>
+        <div class="row">
+          <label for="everyorg_import_file">Dashboard donations CSV</label>
+          <input id="everyorg_import_file" type="file" accept=".csv,text/csv" />
+        </div>
+        <div class="actions">
+          <button id="everyorg_import_btn">Import dashboard CSV</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="wide-grid">
+      <div class="panel">
+        <h2>Every.org Key Demo</h2>
+        <div class="subhead">Docs-aligned demo routes that use EVERYORG_PUBLIC_KEY for public GET requests and BOTH keys for privileged POST requests.</div>
+        <div class="stack">
+          <div class="card" id="everyorg_demo_status"></div>
+          <div class="row">
+            <label for="everyorg_search_term">Search nonprofits</label>
+            <input id="everyorg_search_term" value="education" />
+          </div>
+          <div class="row">
+            <label for="everyorg_search_cause">Cause filter (optional)</label>
+            <input id="everyorg_search_cause" placeholder="education, health, animals..." />
+          </div>
+          <div class="row">
+            <label for="everyorg_search_take">Take</label>
+            <input id="everyorg_search_take" type="number" min="1" max="50" value="5" />
+          </div>
+          <div class="actions">
+            <button id="everyorg_search_btn">Search</button>
+            <button id="everyorg_browse_btn" class="ghost">Browse Cause</button>
+            <button id="everyorg_config_btn" class="ghost">Refresh Key Status</button>
+          </div>
+          <div class="list" id="everyorg_demo_results"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Every.org Direct Endpoints</h2>
+        <div class="subhead">Use identifiers from search results to fetch nonprofit and fundraiser data. Fundraiser creation is server-side only and uses HTTP Basic Auth with the public/private key pair.</div>
+        <div class="stack">
+          <div class="row">
+            <label for="everyorg_identifier">Nonprofit identifier</label>
+            <input id="everyorg_identifier" placeholder="slug, EIN, or nonprofit id" />
+          </div>
+          <div class="actions">
+            <button id="everyorg_nonprofit_btn">Get nonprofit</button>
+          </div>
+          <div class="row">
+            <label for="everyorg_fundraiser_nonprofit">Fundraiser nonprofit identifier</label>
+            <input id="everyorg_fundraiser_nonprofit" placeholder="nonprofit slug or id" />
+          </div>
+          <div class="row">
+            <label for="everyorg_fundraiser_identifier">Fundraiser identifier</label>
+            <input id="everyorg_fundraiser_identifier" placeholder="fundraiser slug or id" />
+          </div>
+          <div class="actions">
+            <button id="everyorg_fundraiser_btn" class="ghost">Get fundraiser</button>
+            <button id="everyorg_raised_btn" class="ghost">Get raised</button>
+          </div>
+          <div class="row">
+            <label for="everyorg_create_payload">Create fundraiser JSON</label>
+            <textarea id="everyorg_create_payload">{
+  "nonprofitId": "",
+  "title": "Gift AI Demo Fundraiser",
+  "description": "Demo fundraiser created from the Gift Ingestion Console.",
+  "currency": "USD",
+  "goal": 100000
+}</textarea>
+          </div>
+          <div class="actions">
+            <button id="everyorg_create_btn" class="alt">Create fundraiser</button>
+          </div>
+          <pre id="everyorg_demo_output"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
       <h2>Console Output</h2>
       <pre id="console"></pre>
     </section>
@@ -413,6 +505,12 @@ def operator_console() -> str:
     const rawBody = document.getElementById("raw_body");
     const giftsBody = document.getElementById("gifts_body");
     const supportersBody = document.getElementById("supporters_body");
+    const everyOrgProfilesEl = document.getElementById("everyorg_profiles");
+    const everyOrgImportSourceEl = document.getElementById("everyorg_import_source");
+    const everyOrgImportFileEl = document.getElementById("everyorg_import_file");
+    const everyOrgDemoStatusEl = document.getElementById("everyorg_demo_status");
+    const everyOrgDemoResultsEl = document.getElementById("everyorg_demo_results");
+    const everyOrgDemoOutputEl = document.getElementById("everyorg_demo_output");
     let sourceIndex = new Map();
 
     function sourceLabel(source) {
@@ -460,6 +558,11 @@ def operator_console() -> str:
     }
 
     function sourceActions(source) {
+      if (source.acquisition_mode === "webhook") {
+        return `
+          <div class="muted">Webhook-only source. Data appears here after Every.org posts to the webhook URL.</div>
+        `;
+      }
       return `
         <div class="actions">
           <button data-action="test" data-id="${source.id}" class="ghost">Test</button>
@@ -472,6 +575,7 @@ def operator_console() -> str:
 
     function renderSources(items) {
       sourceIndex = new Map(items.map((source) => [source.id, source]));
+      renderEveryOrgImportSources();
       if (!items.length) {
         listEl.innerHTML = `<div class="card"><p class="muted">No sources yet.</p></div>`;
         return;
@@ -566,9 +670,104 @@ def operator_console() -> str:
       `).join("");
     }
 
+    function renderEveryOrgProfiles(items) {
+      if (!items.length) {
+        everyOrgProfilesEl.innerHTML = `<div class="card"><p class="muted">No Every.org sources yet.</p></div>`;
+        return;
+      }
+      everyOrgProfilesEl.innerHTML = items.map((item) => {
+        if (item.error) {
+          return `
+            <article class="card">
+              <h3>${item.source_name}</h3>
+              <div class="chips">
+                <span class="chip bad">profile unavailable</span>
+              </div>
+              <div class="muted">${item.error}</div>
+            </article>
+          `;
+        }
+        const nonprofit = item.nonprofit || {};
+        return `
+          <article class="card">
+            <h3>${nonprofit.name || item.source_name}</h3>
+            <div class="chips">
+              <span class="chip ok">${nonprofit.primarySlug || ""}</span>
+              <span class="chip">${nonprofit.ein || "no ein"}</span>
+              <span class="chip ${nonprofit.donationsEnabled ? "ok" : "warn"}">${nonprofit.donationsEnabled ? "donations enabled" : "donations disabled"}</span>
+            </div>
+            <div class="muted">Every.org ID: ${nonprofit.id || "n/a"}</div>
+            <div class="muted">Location: ${nonprofit.locationAddress || "n/a"}</div>
+            <div class="muted">Website: ${nonprofit.websiteUrl ? `<a href="${nonprofit.websiteUrl}" target="_blank" rel="noreferrer">${nonprofit.websiteUrl}</a>` : "n/a"}</div>
+            <div class="muted">Profile: ${nonprofit.profileUrl ? `<a href="${nonprofit.profileUrl}" target="_blank" rel="noreferrer">${nonprofit.profileUrl}</a>` : "n/a"}</div>
+            <p>${nonprofit.description || ""}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderEveryOrgImportSources() {
+      const everyOrgSources = Array.from(sourceIndex.values()).filter((source) => source.source_system === "everyorg");
+      if (!everyOrgSources.length) {
+        everyOrgImportSourceEl.innerHTML = `<option value="">No Every.org sources</option>`;
+        everyOrgImportSourceEl.disabled = true;
+        return;
+      }
+      everyOrgImportSourceEl.disabled = false;
+      everyOrgImportSourceEl.innerHTML = everyOrgSources.map((source) => `
+        <option value="${source.id}">${source.source_name} (#${source.id})</option>
+      `).join("");
+    }
+
+    function everyOrgNonprofitsFromPayload(payload) {
+      if (Array.isArray(payload?.nonprofits)) return payload.nonprofits;
+      if (Array.isArray(payload?.data?.nonprofits)) return payload.data.nonprofits;
+      const nonprofit = payload?.nonprofit || payload?.data?.nonprofit;
+      return nonprofit ? [nonprofit] : [];
+    }
+
+    function renderEveryOrgDemoConfig(config) {
+      everyOrgDemoStatusEl.innerHTML = `
+        <div class="chips">
+          <span class="chip ${config.public_key_configured ? "ok" : "bad"}">public key ${config.public_key_configured ? "configured" : "missing"}</span>
+          <span class="chip ${config.private_key_configured ? "ok" : "warn"}">private key ${config.private_key_configured ? "configured" : "missing"}</span>
+        </div>
+        <div class="muted">Base URL: ${config.public_api_base_url}</div>
+        <div class="muted">Per Every.org docs, public key auth covers public GET routes and the public/private pair is used for privileged POST routes.</div>
+      `;
+    }
+
+    function renderEveryOrgDemoResults(payload) {
+      const nonprofits = everyOrgNonprofitsFromPayload(payload);
+      if (!nonprofits.length) {
+        everyOrgDemoResultsEl.innerHTML = `<div class="card"><p class="muted">No nonprofit results yet.</p></div>`;
+        return;
+      }
+      everyOrgDemoResultsEl.innerHTML = nonprofits.map((nonprofit) => `
+        <article class="card">
+          <h3>${nonprofit.name || nonprofit.primarySlug || nonprofit.slug || nonprofit.id || "Every.org nonprofit"}</h3>
+          <div class="chips">
+            <span class="chip ok">${nonprofit.primarySlug || nonprofit.slug || "no slug"}</span>
+            <span class="chip">${nonprofit.ein || "no ein"}</span>
+            <span class="chip ${nonprofit.donationsEnabled ? "ok" : "warn"}">${nonprofit.donationsEnabled ? "donations enabled" : "donations status n/a"}</span>
+          </div>
+          <div class="muted">ID: ${nonprofit.id || "n/a"}</div>
+          <div class="muted">Location: ${nonprofit.locationAddress || nonprofit.location || "n/a"}</div>
+          <div class="muted">Profile: ${nonprofit.profileUrl ? `<a href="${nonprofit.profileUrl}" target="_blank" rel="noreferrer">${nonprofit.profileUrl}</a>` : "n/a"}</div>
+          <div class="muted">Website: ${nonprofit.websiteUrl ? `<a href="${nonprofit.websiteUrl}" target="_blank" rel="noreferrer">${nonprofit.websiteUrl}</a>` : "n/a"}</div>
+          <p>${nonprofit.description || ""}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderEveryOrgDemoOutput(payload) {
+      everyOrgDemoOutputEl.textContent = JSON.stringify(payload, null, 2);
+    }
+
     async function loadSources() {
       const data = await request("/api/v1/sources");
       renderSources(data.items);
+      await loadEveryOrgProfiles();
       print("Loaded sources", data);
     }
 
@@ -590,6 +789,131 @@ def operator_console() -> str:
     async function loadSupporters() {
       const data = await request("/api/v1/normalized/supporters");
       renderSupporters(data.items);
+    }
+
+    async function loadEveryOrgProfiles() {
+      const everyOrgSources = Array.from(sourceIndex.values()).filter((source) => source.source_system === "everyorg");
+      if (!everyOrgSources.length) {
+        renderEveryOrgProfiles([]);
+        return;
+      }
+      const profiles = await Promise.all(everyOrgSources.map(async (source) => {
+        try {
+          const data = await request(`/api/v1/everyorg/sources/${source.id}/nonprofit`);
+          return {
+            source_name: source.source_name,
+            nonprofit: data.nonprofit,
+          };
+        } catch (error) {
+          return {
+            source_name: source.source_name,
+            error: String(error),
+          };
+        }
+      }));
+      renderEveryOrgProfiles(profiles);
+    }
+
+    async function loadEveryOrgDemoConfig() {
+      const data = await request("/api/v1/everyorg/demo/config");
+      renderEveryOrgDemoConfig(data);
+      print("Every.org demo config", data);
+    }
+
+    async function runEveryOrgSearch() {
+      const searchTerm = document.getElementById("everyorg_search_term").value.trim();
+      if (!searchTerm) {
+        print("Every.org search", "Search term is required.");
+        return;
+      }
+      const take = document.getElementById("everyorg_search_take").value.trim() || "5";
+      const cause = document.getElementById("everyorg_search_cause").value.trim();
+      const suffix = cause ? `?take=${encodeURIComponent(take)}&cause=${encodeURIComponent(cause)}` : `?take=${encodeURIComponent(take)}`;
+      const data = await request(`/api/v1/everyorg/demo/search/${encodeURIComponent(searchTerm)}${suffix}`);
+      renderEveryOrgDemoResults(data);
+      renderEveryOrgDemoOutput(data);
+      print(`Every.org search: ${searchTerm}`, data);
+    }
+
+    async function runEveryOrgBrowse() {
+      const cause = document.getElementById("everyorg_search_cause").value.trim() || document.getElementById("everyorg_search_term").value.trim();
+      if (!cause) {
+        print("Every.org browse", "Cause is required.");
+        return;
+      }
+      const take = document.getElementById("everyorg_search_take").value.trim() || "5";
+      const data = await request(`/api/v1/everyorg/demo/browse/${encodeURIComponent(cause)}?take=${encodeURIComponent(take)}`);
+      renderEveryOrgDemoResults(data);
+      renderEveryOrgDemoOutput(data);
+      print(`Every.org browse: ${cause}`, data);
+    }
+
+    async function runEveryOrgNonprofitLookup() {
+      const identifier = document.getElementById("everyorg_identifier").value.trim();
+      if (!identifier) {
+        print("Every.org nonprofit", "Nonprofit identifier is required.");
+        return;
+      }
+      const data = await request(`/api/v1/everyorg/demo/nonprofit/${encodeURIComponent(identifier)}`);
+      renderEveryOrgDemoResults(data);
+      renderEveryOrgDemoOutput(data);
+      print(`Every.org nonprofit: ${identifier}`, data);
+    }
+
+    async function runEveryOrgFundraiserDetails(pathSuffix = "") {
+      const nonprofitIdentifier = document.getElementById("everyorg_fundraiser_nonprofit").value.trim();
+      const fundraiserIdentifier = document.getElementById("everyorg_fundraiser_identifier").value.trim();
+      if (!nonprofitIdentifier || !fundraiserIdentifier) {
+        print("Every.org fundraiser", "Both fundraiser identifiers are required.");
+        return;
+      }
+      const data = await request(`/api/v1/everyorg/demo/fundraisers/${encodeURIComponent(nonprofitIdentifier)}/${encodeURIComponent(fundraiserIdentifier)}${pathSuffix}`);
+      renderEveryOrgDemoOutput(data);
+      print(`Every.org fundraiser${pathSuffix || ""}: ${nonprofitIdentifier}/${fundraiserIdentifier}`, data);
+    }
+
+    async function runEveryOrgCreateFundraiser() {
+      let payload = {};
+      try {
+        payload = JSON.parse(document.getElementById("everyorg_create_payload").value || "{}");
+      } catch (error) {
+        print("Invalid fundraiser JSON", String(error));
+        return;
+      }
+      const data = await request("/api/v1/everyorg/demo/fundraiser", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      renderEveryOrgDemoOutput(data);
+      print("Every.org fundraiser created", data);
+    }
+
+    async function importEveryOrgDashboardCsv() {
+      const sourceId = everyOrgImportSourceEl.value;
+      const file = everyOrgImportFileEl.files && everyOrgImportFileEl.files[0];
+      if (!sourceId) {
+        print("Every.org dashboard import", "Choose an Every.org source first.");
+        return;
+      }
+      if (!file) {
+        print("Every.org dashboard import", "Choose a CSV file from the Every.org dashboard download.");
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`/api/v1/everyorg/dashboard/sources/${sourceId}/imports/donations`, {
+        method: "POST",
+        body: formData,
+      });
+      const text = await response.text();
+      let body = text;
+      try { body = text ? JSON.parse(text) : {}; } catch (_) {}
+      if (!response.ok) {
+        print("Every.org dashboard import failed", body);
+        throw new Error(typeof body === "string" ? body : JSON.stringify(body));
+      }
+      print("Every.org dashboard import completed", body);
+      await Promise.all([loadRuns(), loadRawObjects(), loadGifts(), loadSupporters()]);
     }
 
     async function createSource() {
@@ -642,7 +966,7 @@ def operator_console() -> str:
     }
 
     document.getElementById("create_btn").addEventListener("click", () => createSource().catch((error) => print("Create failed", String(error))));
-    document.getElementById("refresh_btn").addEventListener("click", () => Promise.all([loadSources(), loadRuns(), loadRawObjects(), loadGifts(), loadSupporters()]).catch((error) => print("Refresh failed", String(error))));
+    document.getElementById("refresh_btn").addEventListener("click", () => Promise.all([loadSources(), loadRuns(), loadRawObjects(), loadGifts(), loadSupporters(), loadEveryOrgDemoConfig()]).catch((error) => print("Refresh failed", String(error))));
     document.getElementById("run_due_btn").addEventListener("click", async () => {
       try {
         const data = await request("/api/v1/scheduler/run-due", { method: "POST" });
@@ -657,8 +981,16 @@ def operator_console() -> str:
       if (!btn) return;
       runAction(btn.dataset.action, btn.dataset.id).catch((error) => print("Action failed", String(error)));
     });
+    document.getElementById("everyorg_search_btn").addEventListener("click", () => runEveryOrgSearch().catch((error) => print("Every.org search failed", String(error))));
+    document.getElementById("everyorg_browse_btn").addEventListener("click", () => runEveryOrgBrowse().catch((error) => print("Every.org browse failed", String(error))));
+    document.getElementById("everyorg_config_btn").addEventListener("click", () => loadEveryOrgDemoConfig().catch((error) => print("Every.org config failed", String(error))));
+    document.getElementById("everyorg_import_btn").addEventListener("click", () => importEveryOrgDashboardCsv().catch((error) => print("Every.org dashboard import failed", String(error))));
+    document.getElementById("everyorg_nonprofit_btn").addEventListener("click", () => runEveryOrgNonprofitLookup().catch((error) => print("Every.org nonprofit failed", String(error))));
+    document.getElementById("everyorg_fundraiser_btn").addEventListener("click", () => runEveryOrgFundraiserDetails().catch((error) => print("Every.org fundraiser failed", String(error))));
+    document.getElementById("everyorg_raised_btn").addEventListener("click", () => runEveryOrgFundraiserDetails("/raised").catch((error) => print("Every.org fundraiser raised failed", String(error))));
+    document.getElementById("everyorg_create_btn").addEventListener("click", () => runEveryOrgCreateFundraiser().catch((error) => print("Every.org create fundraiser failed", String(error))));
 
-    Promise.all([loadSources(), loadRuns(), loadRawObjects(), loadGifts(), loadSupporters()]).catch((error) => print("Initial load failed", String(error)));
+    Promise.all([loadSources(), loadRuns(), loadRawObjects(), loadGifts(), loadSupporters(), loadEveryOrgDemoConfig()]).catch((error) => print("Initial load failed", String(error)));
   </script>
 </body>
 </html>"""

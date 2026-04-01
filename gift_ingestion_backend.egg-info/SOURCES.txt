@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 alembic/env.py
 alembic/versions/20260330_0001_initial.py
+alembic/versions/20260330_0002_normalized_supporters.py
 app/__init__.py
 app/main.py
 app/api/__init__.py
@@ -10,8 +11,11 @@ app/api/router.py
 app/api/routes/__init__.py
 app/api/routes/health.py
 app/api/routes/ingestion_runs.py
+app/api/routes/normalized.py
 app/api/routes/raw_objects.py
+app/api/routes/scheduler.py
 app/api/routes/sources.py
+app/api/routes/ui.py
 app/connectors/__init__.py
 app/connectors/registry.py
 app/connectors/base/__init__.py
@@ -21,6 +25,7 @@ app/connectors/email/__init__.py
 app/connectors/email/connector.py
 app/connectors/onecause/__init__.py
 app/connectors/onecause/client.py
+app/connectors/onecause/config_resolver.py
 app/connectors/onecause/connector.py
 app/connectors/onecause/schemas.py
 app/connectors/portal_export/__init__.py
@@ -38,6 +43,7 @@ app/dedupe/service.py
 app/models/__init__.py
 app/models/ingestion_run.py
 app/models/mixins.py
+app/models/normalized_supporter.py
 app/models/raw_object.py
 app/models/source_config.py
 app/models/staging_gift.py
@@ -52,11 +58,14 @@ app/schemas/__init__.py
 app/schemas/common.py
 app/schemas/health.py
 app/schemas/ingestion_run.py
+app/schemas/normalized.py
 app/schemas/raw_object.py
 app/schemas/source.py
 app/services/__init__.py
 app/services/ingestion_service.py
+app/services/normalization_service.py
 app/services/raw_object_service.py
+app/services/scheduler_service.py
 app/services/source_service.py
 app/storage/__init__.py
 app/storage/base.py
@@ -72,5 +81,7 @@ gift_ingestion_backend.egg-info/requires.txt
 gift_ingestion_backend.egg-info/top_level.txt
 tests/test_connector_validation.py
 tests/test_dedupe.py
+tests/test_normalization.py
 tests/test_onecause_connector.py
 tests/test_sources_api.py
+tests/test_ui.py
