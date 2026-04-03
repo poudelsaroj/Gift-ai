@@ -4,6 +4,7 @@ from app.connectors.base.connector import BaseConnector
 from app.connectors.email.connector import EmailConnector
 from app.connectors.everyorg.connector import EveryOrgConnector
 from app.connectors.onecause.connector import OneCauseConnector
+from app.connectors.pledge.connector import PledgeConnector
 from app.connectors.portal_export.connector import PortalExportConnector
 from app.connectors.shared_folder.connector import SharedFolderConnector
 
@@ -13,6 +14,7 @@ class ConnectorRegistry:
 
     _registry: dict[str, type[BaseConnector]] = {
         "onecause": OneCauseConnector,
+        "pledge": PledgeConnector,
         "everyorg": EveryOrgConnector,
         "email": EmailConnector,
         "shared_folder": SharedFolderConnector,
@@ -27,4 +29,3 @@ class ConnectorRegistry:
         except KeyError as exc:
             raise ValueError(f"Unsupported source system: {source_system}") from exc
         return connector_class(config=config)
-

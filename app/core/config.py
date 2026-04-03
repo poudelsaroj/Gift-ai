@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     onecause_client_id: str | None = Field(default=None, alias="ONECAUSE_CLIENT_ID")
     onecause_access_token: str | None = Field(default=None, alias="ONECAUSE_ACCESS_TOKEN")
     onecause_challenge_id: str | None = Field(default=None, alias="ONECAUSE_CHALLENGE_ID")
+    pledge_api_base_url: str = Field(default="https://api.pledge.to", alias="PLEDGE_API_BASE_URL")
+    pledge_api_key: str | None = Field(default=None, alias="PLEDGE_API_KEY")
     everyorg_public_api_base_url: str = Field(
         default="https://partners.every.org",
         alias="EVERYORG_PUBLIC_API_BASE_URL",

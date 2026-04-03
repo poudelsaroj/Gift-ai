@@ -8,6 +8,7 @@ from app.api.deps import get_db
 from app.connectors.everyorg.config_resolver import resolve_everyorg_config
 from app.connectors.registry import ConnectorRegistry
 from app.connectors.onecause.config_resolver import resolve_onecause_config
+from app.connectors.pledge.config_resolver import resolve_pledge_config
 from app.models.source_config import SourceConfig
 from app.schemas.common import PaginatedResponse
 from app.schemas.ingestion_run import IngestionRunRead
@@ -49,6 +50,13 @@ def create_source(payload: SourceConfigCreate, db: Session = Depends(get_db)) ->
         try:
             source_payload = payload.model_copy(
                 update={"config_json": resolve_everyorg_config(payload.config_json)}
+            )
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if payload.source_system == "pledge":
+        try:
+            source_payload = payload.model_copy(
+                update={"config_json": resolve_pledge_config(payload.config_json)}
             )
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -96,12 +104,17 @@ def update_source(
             updated_config = resolve_everyorg_config(updated_config)
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if source.source_system == "pledge":
+        try:
+            updated_config = resolve_pledge_config(updated_config)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
         connector = ConnectorRegistry.get_connector(source.source_system, updated_config)
         connector.validate_config()
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.config_json is not None and source.source_system in {"onecause", "everyorg"}:
+    if payload.config_json is not None and source.source_system in {"onecause", "everyorg", "pledge"}:
         payload = payload.model_copy(update={"config_json": updated_config})
     return source_service.update(db, source, payload)
 

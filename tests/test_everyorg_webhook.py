@@ -86,11 +86,41 @@ def test_receive_everyorg_webhook(client: TestClient, db_session: Session) -> No
     assert raw_object.external_object_id == "charge-123"
     assert raw_object.external_parent_id == "fundraiser-1"
     assert gift is not None
+    assert gift.record_type == "gift"
+    assert gift.source_record_id == "charge-123"
+    assert gift.primary_name == "Jane Doe"
     assert gift.gift_id == "charge-123"
     assert gift.donor_name == "Jane Doe"
     assert gift.amount == Decimal("100.00")
     assert gift.currency == "USD"
     assert gift.source_file_id == "demo-org"
+    assert gift.extra_metadata["nonprofit_name"] == "Demo Org"
+
+
+def test_receive_everyorg_webhook_accepts_header_token(client: TestClient) -> None:
+    created = client.post("/api/v1/sources", json=everyorg_source_payload()).json()
+
+    response = client.post(
+        f"/api/v1/webhooks/everyorg/{created['id']}",
+        json=everyorg_webhook_payload(),
+        headers={"X-Webhook-Token": "everyorg-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
+def test_receive_everyorg_webhook_accepts_bearer_token(client: TestClient) -> None:
+    created = client.post("/api/v1/sources", json=everyorg_source_payload()).json()
+
+    response = client.post(
+        f"/api/v1/webhooks/everyorg/{created['id']}",
+        json=everyorg_webhook_payload(),
+        headers={"Authorization": "Bearer everyorg-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
 
 
 def test_receive_everyorg_webhook_rejects_invalid_token(client: TestClient) -> None:

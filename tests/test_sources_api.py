@@ -19,6 +19,20 @@ def onecause_payload() -> dict:
     }
 
 
+def pledge_payload() -> dict:
+    return {
+        "source_name": "Pledge Donations",
+        "source_system": "pledge",
+        "acquisition_mode": "api",
+        "auth_type": "bearer",
+        "enabled": True,
+        "config_json": {
+            "api_base_url": "https://api.pledge.example",
+            "api_key": "pledge-secret",
+        },
+    }
+
+
 def test_create_source(client: TestClient) -> None:
     response = client.post("/api/v1/sources", json=onecause_payload())
     assert response.status_code == 201
@@ -82,3 +96,31 @@ def test_update_source(client: TestClient) -> None:
     body = response.json()
     assert body["source_name"] == "OneCause Updated"
     assert body["enabled"] is False
+
+
+def test_create_pledge_source(client: TestClient) -> None:
+    response = client.post("/api/v1/sources", json=pledge_payload())
+    assert response.status_code == 201
+    body = response.json()
+    assert body["source_name"] == "Pledge Donations"
+    assert body["source_system"] == "pledge"
+    assert body["config_json"]["api_key"] == "***REDACTED***"
+
+
+def test_create_pledge_source_uses_env_defaults(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("PLEDGE_API_BASE_URL", "https://api.pledge.example")
+    monkeypatch.setenv("PLEDGE_API_KEY", "env-pledge-secret")
+
+    payload = {
+        "source_name": "Pledge Env Defaults",
+        "source_system": "pledge",
+        "acquisition_mode": "api",
+        "auth_type": "bearer",
+        "enabled": True,
+        "config_json": {},
+    }
+    response = client.post("/api/v1/sources", json=payload)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["config_json"]["api_base_url"] == "https://api.pledge.example"
+    assert body["config_json"]["api_key"] == "***REDACTED***"

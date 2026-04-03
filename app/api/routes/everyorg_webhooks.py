@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -37,18 +37,31 @@ def _get_source_or_404(db: Session, source_id: int) -> SourceConfig:
     return source
 
 
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    """Extract a bearer token from a standard Authorization header."""
+    if not authorization:
+        return None
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return None
+    return value.strip()
+
+
 @router.post("/{source_id}", response_model=EveryOrgWebhookResponse)
 def receive_everyorg_webhook(
     source_id: int,
     payload: EveryOrgDonationWebhookPayload,
-    token: str = Query(..., min_length=8),
+    token: str | None = Query(default=None, min_length=8),
+    x_webhook_token: str | None = Header(default=None, alias="X-Webhook-Token"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
     db: Session = Depends(get_db),
 ) -> EveryOrgWebhookResponse:
     """Receive and persist an Every.org donation webhook."""
     source = _get_source_or_404(db, source_id)
     connector = EveryOrgConnector(source.config_json)
+    provided_token = token or x_webhook_token or _extract_bearer_token(authorization)
 
-    if not secrets.compare_digest(token, connector.typed_config.webhook_token):
+    if not provided_token or not secrets.compare_digest(provided_token, connector.typed_config.webhook_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook token")
 
     if connector.typed_config.nonprofit_slug:

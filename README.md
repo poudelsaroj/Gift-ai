@@ -207,8 +207,8 @@ Base prefix: `/api/v1`
 - `GET /raw-objects/{id}`
 - `GET /raw-objects/{id}/payload`
 - `POST /raw-objects/{id}/reprocess`
+- `GET /normalized/records`
 - `GET /normalized/gifts`
-- `GET /normalized/supporters`
 - `POST /scheduler/run-due`
 - `GET /` operator console
 
@@ -290,14 +290,23 @@ Preferred OneCause auth order:
 2. `auth_mode=access_token` with a persisted client id and refreshed access token.
 3. Never use browser cookies as connector configuration.
 
-## Normalized Views
+## Canonical Normalized Model
 
-Phase 1 now persists lightweight normalized read models for operator visibility:
+Phase 1 persists a single canonical normalized record table for operator visibility:
 
-- `staging_gifts` stores normalized OneCause donation records
-- `normalized_supporters` stores normalized OneCause participant/supporter records
+- `staging_gifts` stores canonical normalized records across sources and object types
+- `record_type` distinguishes rows such as `gift` and `supporter`
+- `extra_metadata` captures source-specific spillover fields without forcing source-specific columns into the fixed model
 
-These are read-model tables for operations and reporting. Raw payload retention remains the source of truth for lineage.
+The current fixed columns cover the common operating shape:
+
+- source identifiers
+- primary person name/email
+- amount/currency/date
+- campaign and related-entity attribution
+- team, status, duplicate state, and reference values
+
+Raw payload retention remains the source of truth for lineage. The older `normalized_supporters` table and `/normalized/supporters` endpoint are kept only for compatibility while the UI and new integrations read from `/normalized/records`.
 
 ## Ingestion Runs
 

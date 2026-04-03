@@ -68,6 +68,8 @@ def test_import_everyorg_dashboard_csv(client: TestClient, db_session: Session) 
         )
     )
     assert len(gifts) == 2
+    assert gifts[0].record_type == "gift"
+    assert gifts[0].source_record_id == "charge-2500"
     assert gifts[0].gift_id == "charge-2500"
     assert gifts[0].donor_name == "Ariana Gula"
     assert gifts[0].amount == Decimal("2500")
@@ -75,6 +77,7 @@ def test_import_everyorg_dashboard_csv(client: TestClient, db_session: Session) 
     assert gifts[0].payment_type == "Card"
     assert gifts[0].source_file_id == "demo-org"
     assert gifts[0].memo == "Year End"
+    assert gifts[0].extra_metadata["nonprofit_name"] == "Every.org Donations"
     assert gifts[1].gift_id == "charge-100"
     assert gifts[1].donor_name == "Anonymous Donor"
     assert gifts[1].amount == Decimal("100")
