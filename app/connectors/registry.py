@@ -3,6 +3,7 @@
 from app.connectors.base.connector import BaseConnector
 from app.connectors.email.connector import EmailConnector
 from app.connectors.everyorg.connector import EveryOrgConnector
+from app.connectors.gmail.connector import GmailConnector
 from app.connectors.onecause.connector import OneCauseConnector
 from app.connectors.pledge.connector import PledgeConnector
 from app.connectors.portal_export.connector import PortalExportConnector
@@ -16,6 +17,7 @@ class ConnectorRegistry:
         "onecause": OneCauseConnector,
         "pledge": PledgeConnector,
         "everyorg": EveryOrgConnector,
+        "gmail": GmailConnector,
         "email": EmailConnector,
         "shared_folder": SharedFolderConnector,
         "portal_export": PortalExportConnector,

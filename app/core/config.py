@@ -42,6 +42,28 @@ class Settings(BaseSettings):
     onecause_challenge_id: str | None = Field(default=None, alias="ONECAUSE_CHALLENGE_ID")
     pledge_api_base_url: str = Field(default="https://api.pledge.to", alias="PLEDGE_API_BASE_URL")
     pledge_api_key: str | None = Field(default=None, alias="PLEDGE_API_KEY")
+    gmail_api_base_url: str = Field(
+        default="https://gmail.googleapis.com/gmail/v1",
+        alias="GMAIL_API_BASE_URL",
+    )
+    gmail_user_id: str = Field(default="me", alias="GMAIL_USER_ID")
+    gmail_access_token: str | None = Field(default=None, alias="GMAIL_ACCESS_TOKEN")
+    gmail_refresh_token: str | None = Field(default=None, alias="GMAIL_REFRESH_TOKEN")
+    gmail_client_id: str | None = Field(default=None, alias="GMAIL_CLIENT_ID")
+    gmail_client_secret: str | None = Field(default=None, alias="GMAIL_CLIENT_SECRET")
+    gmail_token_url: str = Field(
+        default="https://oauth2.googleapis.com/token",
+        alias="GMAIL_TOKEN_URL",
+    )
+    gmail_query: str | None = Field(default=None, alias="GMAIL_QUERY")
+    gmail_label_ids: str | None = Field(default=None, alias="GMAIL_LABEL_IDS")
+    gmail_attachment_max_bytes: int = Field(default=5000000, alias="GMAIL_ATTACHMENT_MAX_BYTES")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
+    openai_gift_extraction_model: str = Field(
+        default="gpt-5.2",
+        alias="OPENAI_GIFT_EXTRACTION_MODEL",
+    )
     everyorg_public_api_base_url: str = Field(
         default="https://partners.every.org",
         alias="EVERYORG_PUBLIC_API_BASE_URL",

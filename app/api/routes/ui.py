@@ -17,26 +17,27 @@ def operator_console() -> str:
   <title>Canonical Gift Console</title>
   <style>
     :root {
-      --bg: #f5f1e8;
-      --panel: rgba(255, 251, 245, 0.92);
-      --ink: #1f2624;
-      --muted: #68706c;
-      --line: #ddd2c1;
-      --accent: #176b62;
-      --accent-2: #cb7b2f;
-      --accent-3: #234c7d;
+      --bg: #f3f6fb;
+      --bg-2: #ffffff;
+      --panel: rgba(255, 255, 255, 0.94);
+      --ink: #172033;
+      --muted: #647085;
+      --line: #d8e1ee;
+      --accent: #1b5fc6;
+      --accent-2: #0f8a7b;
+      --accent-3: #4457a6;
       --danger: #9a3e34;
-      --shadow: 0 18px 40px rgba(46, 35, 20, 0.08);
+      --shadow: 0 22px 44px rgba(18, 38, 63, 0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(23,107,98,0.12), transparent 28%),
-        radial-gradient(circle at top right, rgba(203,123,47,0.14), transparent 24%),
-        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+        radial-gradient(circle at top left, rgba(27,95,198,0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(15,138,123,0.10), transparent 24%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
     }
     .shell {
       max-width: 1320px;
@@ -80,7 +81,7 @@ def operator_console() -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 14px 16px;
-      background: rgba(255,255,255,0.48);
+      background: rgba(247, 250, 255, 0.92);
     }
     .stat strong {
       display: block;
@@ -116,7 +117,7 @@ def operator_console() -> str:
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 12px 14px;
-      background: #fffdf9;
+      background: #ffffff;
       color: var(--ink);
     }
     .actions {
@@ -151,13 +152,13 @@ def operator_console() -> str:
       font-size: 0.8rem;
       padding: 4px 9px;
       border-radius: 999px;
-      background: #efe5d5;
+      background: #edf3fb;
       color: var(--ink);
     }
-    .chip.ok { background: rgba(23,107,98,0.14); color: var(--accent); }
-    .chip.warn { background: rgba(203,123,47,0.18); color: #8d4e06; }
+    .chip.ok { background: rgba(15,138,123,0.12); color: var(--accent-2); }
+    .chip.warn { background: rgba(68,87,166,0.12); color: var(--accent-3); }
     .chip.bad { background: rgba(154,62,52,0.12); color: var(--danger); }
-    .chip.info { background: rgba(35,76,125,0.12); color: var(--accent-3); }
+    .chip.info { background: rgba(27,95,198,0.12); color: var(--accent); }
     .detail-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -167,7 +168,7 @@ def operator_console() -> str:
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px 13px;
-      background: rgba(255,255,255,0.5);
+      background: rgba(248, 251, 255, 0.96);
     }
     .detail strong {
       display: block;
@@ -185,7 +186,7 @@ def operator_console() -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 14px 16px;
-      background: linear-gradient(135deg, rgba(23,107,98,0.08), rgba(203,123,47,0.12));
+      background: linear-gradient(135deg, rgba(27,95,198,0.08), rgba(15,138,123,0.08));
     }
     .banner code {
       display: inline-block;
@@ -206,7 +207,7 @@ def operator_console() -> str:
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 18px;
-      background: rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.98);
     }
     table {
       width: 100%;
@@ -224,7 +225,60 @@ def operator_console() -> str:
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #f7efe2;
+      background: #f6f9fe;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .summary-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .summary-card strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 1.35rem;
+      color: var(--accent);
+    }
+    .source-data {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .insight-panel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(248, 251, 255, 0.92);
+    }
+    .insight-panel h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+    .source-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .source-list-item {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+    }
+    .source-list-item strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+    .source-list-item small {
+      display: block;
+      margin-top: 6px;
     }
     .sort-button {
       display: inline-flex;
@@ -254,8 +308,8 @@ def operator_console() -> str:
       margin: 0;
       border-radius: 16px;
       padding: 14px;
-      background: #1f2626;
-      color: #f9f4eb;
+      background: #172033;
+      color: #f5f8fd;
       font-size: 0.85rem;
       min-height: 100px;
       overflow: auto;
@@ -263,7 +317,7 @@ def operator_console() -> str:
       word-break: break-word;
     }
     @media (max-width: 980px) {
-      .hero, .grid, .toolbar, .detail-grid { grid-template-columns: 1fr; }
+      .hero, .grid, .toolbar, .detail-grid, .summary-grid, .source-data { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -273,26 +327,26 @@ def operator_console() -> str:
       <div>
         <div class="chip ok">Canonical Operator View</div>
         <h1>Gift Intake Canonical Console</h1>
-        <p>Select a source, run syncs, and review all normalized records in one common data model.</p>
+        <p>Choose a source, review the latest data shape, and inspect canonical gift records without leaving the operator console.</p>
         <div class="meta">
           <span>Swagger: <a href="/docs">/docs</a></span>
           <span>OpenAPI: <a href="/openapi.json">/openapi.json</a></span>
           <span>Health: <a href="/api/v1/health">/api/v1/health</a></span>
         </div>
       </div>
-      <div class="hero-stats">
-        <div class="stat">
+        <div class="hero-stats">
+          <div class="stat">
           <span class="muted">Normalized target</span>
           <strong>One shared model</strong>
-          <small>All source-specific spillover stays in <code>extra_metadata</code>.</small>
-        </div>
-        <div class="stat">
+          <small>Source-specific spillover stays in <code>extra_metadata</code>.</small>
+          </div>
+          <div class="stat">
           <span class="muted">Operator workflow</span>
-          <strong>Select, sync, review</strong>
-          <small>No separate source-specific normalized tables in this UI.</small>
+          <strong>Select, inspect, act</strong>
+          <small>Source-level controls and canonical review stay on one screen.</small>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
     <section class="grid">
       <div class="panel">
@@ -320,7 +374,7 @@ def operator_console() -> str:
           </div>
           <div class="actions">
             <button id="refresh_btn" class="ghost">Refresh</button>
-            <button id="run_due_btn" class="ghost">Run due schedules</button>
+            <button id="run_due_btn" class="ghost">Run scheduled sources now</button>
           </div>
           <div class="banner" id="source_note">
             Choose a source to enable sync actions and filter the canonical table.
@@ -344,7 +398,40 @@ def operator_console() -> str:
 
       <div class="panel">
         <h2>Canonical Records</h2>
-        <div class="subhead">One fixed normalized table across OneCause, Every.org, and future sources.</div>
+        <div class="subhead">The right side is source-aware: choose a source to see its canonical data footprint, recent records, and filtered table.</div>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span class="muted">Selected source</span>
+            <strong id="summary_source_name">All sources</strong>
+            <small id="summary_source_note">No source filter applied.</small>
+          </div>
+          <div class="summary-card">
+            <span class="muted">Canonical records</span>
+            <strong id="summary_record_count">0</strong>
+            <small id="summary_gift_count">0 gift rows</small>
+          </div>
+          <div class="summary-card">
+            <span class="muted">Raw objects</span>
+            <strong id="summary_raw_count">0</strong>
+            <small id="summary_raw_types">No raw objects loaded</small>
+          </div>
+          <div class="summary-card">
+            <span class="muted">Latest canonical date</span>
+            <strong id="summary_latest_date">-</strong>
+            <small id="summary_latest_amount">No amount tracked yet</small>
+          </div>
+        </div>
+        <div class="source-data">
+          <div class="insight-panel">
+            <h3>Selected Source Overview</h3>
+            <div class="muted" id="source_overview_text">Pick a source to review its canonical footprint and recent normalized records.</div>
+            <div class="source-list" id="recent_records_list"></div>
+          </div>
+          <div class="insight-panel">
+            <h3>Data Coverage</h3>
+            <div class="source-list" id="source_metrics_list"></div>
+          </div>
+        </div>
         <div class="toolbar">
           <div class="row">
             <label for="record_type_filter">Record type</label>
@@ -410,6 +497,17 @@ def operator_console() -> str:
     const detailLastSyncEl = document.getElementById("detail_last_sync");
     const detailLastStatusEl = document.getElementById("detail_last_status");
     const detailLastRecordsEl = document.getElementById("detail_last_records");
+    const summarySourceNameEl = document.getElementById("summary_source_name");
+    const summarySourceNoteEl = document.getElementById("summary_source_note");
+    const summaryRecordCountEl = document.getElementById("summary_record_count");
+    const summaryGiftCountEl = document.getElementById("summary_gift_count");
+    const summaryRawCountEl = document.getElementById("summary_raw_count");
+    const summaryRawTypesEl = document.getElementById("summary_raw_types");
+    const summaryLatestDateEl = document.getElementById("summary_latest_date");
+    const summaryLatestAmountEl = document.getElementById("summary_latest_amount");
+    const sourceOverviewTextEl = document.getElementById("source_overview_text");
+    const recentRecordsListEl = document.getElementById("recent_records_list");
+    const sourceMetricsListEl = document.getElementById("source_metrics_list");
     const recordTypeFilterEl = document.getElementById("record_type_filter");
     const recordStatusFilterEl = document.getElementById("record_status_filter");
     const recordSearchEl = document.getElementById("record_search");
@@ -501,6 +599,21 @@ def operator_console() -> str:
       return { rawValue, timestamp };
     }
 
+    function recordsForSource(source) {
+      if (!source) return state.records.slice();
+      return state.records.filter((item) => sourceIdByRawObject(item.raw_object_id) === String(source.id));
+    }
+
+    function rawObjectsForSource(source) {
+      if (!source) return state.rawObjects.slice();
+      return state.rawObjects.filter((item) => String(item.source_id) === String(source.id));
+    }
+
+    function formatAmount(item) {
+      if (item.amount === null || item.amount === undefined || item.amount === "") return "No amount";
+      return `${item.amount} ${item.currency || ""}`.trim();
+    }
+
     function filteredRecords() {
       const src = selectedSource();
       const typeFilter = recordTypeFilterEl.value;
@@ -560,6 +673,95 @@ def operator_console() -> str:
           ${source.source_name} (${source.source_system})
         </option>
       `)).join("");
+    }
+
+    function renderSourceInsights() {
+      const source = selectedSource();
+      const sourceRecords = recordsForSource(source);
+      const sourceRawObjects = rawObjectsForSource(source);
+      const giftRecords = sourceRecords.filter((item) => item.record_type === "gift");
+      const datedRecords = sourceRecords
+        .map((item) => ({ item, date: parseRecordDate(item) }))
+        .filter((entry) => entry.date.timestamp !== null)
+        .sort((left, right) => right.date.timestamp - left.date.timestamp);
+      const latestRecord = datedRecords[0] ? datedRecords[0].item : null;
+      const rawTypeCounts = sourceRawObjects.reduce((acc, item) => {
+        const key = item.external_object_type || "unknown";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const rawTypeSummary = Object.entries(rawTypeCounts)
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 3)
+        .map(([key, count]) => `${key}: ${count}`)
+        .join(" · ");
+      const latestRun = source ? latestRunForSource(source.id) : state.runs
+        .slice()
+        .sort((a, b) => new Date(b.started_at || b.created_at || 0) - new Date(a.started_at || a.created_at || 0))[0] || null;
+
+      summarySourceNameEl.textContent = source ? source.source_name : "All sources";
+      summarySourceNoteEl.textContent = source
+        ? `${source.source_system} · ${source.enabled ? "enabled" : "disabled"} · ${source.acquisition_mode || "manual"}`
+        : "Cross-source canonical review.";
+      summaryRecordCountEl.textContent = String(sourceRecords.length);
+      summaryGiftCountEl.textContent = `${giftRecords.length} gift rows`;
+      summaryRawCountEl.textContent = String(sourceRawObjects.length);
+      summaryRawTypesEl.textContent = rawTypeSummary || "No raw objects loaded";
+      summaryLatestDateEl.textContent = latestRecord ? formatDateTime(latestRecord.record_date || latestRecord.gift_date) : "-";
+      summaryLatestAmountEl.textContent = latestRecord ? formatAmount(latestRecord) : "No amount tracked yet";
+
+      sourceOverviewTextEl.textContent = source
+        ? `Showing canonical records and raw lineage for ${source.source_name}. The table below is filtered to this source, and sync actions on the left apply only here.`
+        : "Showing the cross-source view. Select a source on the left to narrow the canonical table and inspect source-specific data coverage.";
+
+      const recentRecords = sourceRecords
+        .slice()
+        .sort((left, right) => {
+          const leftDate = parseRecordDate(left);
+          const rightDate = parseRecordDate(right);
+          return (rightDate.timestamp || 0) - (leftDate.timestamp || 0);
+        })
+        .slice(0, 4);
+      if (!recentRecords.length) {
+        recentRecordsListEl.innerHTML = `<div class="source-list-item"><strong>No canonical records yet</strong><small>Run a sync or import for the selected source to populate this panel.</small></div>`;
+      } else {
+        recentRecordsListEl.innerHTML = recentRecords.map((item) => `
+          <div class="source-list-item">
+            <strong>${item.primary_name || item.donor_name || item.source_record_id || "Unnamed record"}</strong>
+            <div class="chips">
+              <span class="chip info">${item.record_type || "record"}</span>
+              <span class="chip">${formatAmount(item)}</span>
+              <span class="chip warn">${item.record_date || item.gift_date || "No date"}</span>
+            </div>
+            <small>${item.primary_email || item.donor_email || item.campaign_name || item.receipt_number || "No contact or campaign value"}</small>
+          </div>
+        `).join("");
+      }
+
+      const metrics = [
+        {
+          label: "Latest run",
+          value: latestRun ? formatDateTime(latestRun.completed_at || latestRun.started_at || latestRun.created_at) : "No run yet",
+          detail: latestRun ? `${latestRun.status || "n/a"} · ${latestRun.records_fetched_count || 0} fetched` : "Run the source to populate this metric.",
+        },
+        {
+          label: "Statuses",
+          value: sourceRecords.length ? `${new Set(sourceRecords.map((item) => item.status).filter(Boolean)).size} active values` : "No statuses",
+          detail: sourceRecords.length ? sourceRecords.map((item) => item.status).filter(Boolean).slice(0, 3).join(" · ") || "No status values" : "No canonical rows yet.",
+        },
+        {
+          label: "Coverage",
+          value: `${giftRecords.length}/${sourceRecords.length || 0} gift records`,
+          detail: `${sourceRawObjects.length} raw objects retained for audit.`,
+        },
+      ];
+      sourceMetricsListEl.innerHTML = metrics.map((metric) => `
+        <div class="source-list-item">
+          <strong>${metric.label}</strong>
+          <div>${metric.value}</div>
+          <small>${metric.detail}</small>
+        </div>
+      `).join("");
     }
 
     function renderSourceDetails() {
@@ -636,6 +838,16 @@ def operator_console() -> str:
           <br />
           <code>POST /api/v1/sources/${source.id}/trigger</code>
         `;
+      } else if (source.source_system === "gmail") {
+        everyOrgToolsEl.style.display = "none";
+        actionButtons.full.textContent = "Poll mailbox";
+        integrationNoteEl.innerHTML = `
+          Gmail uses mailbox polling through the generic trigger endpoint. Matching gift emails and supported attachments are normalized into the shared model.
+          <br />
+          <code>POST /api/v1/sources/${source.id}/test</code>
+          <br />
+          <code>POST /api/v1/sources/${source.id}/trigger</code>
+        `;
       } else {
         everyOrgToolsEl.style.display = "none";
         integrationNoteEl.innerHTML = `
@@ -689,6 +901,7 @@ def operator_console() -> str:
       state.records = records.items || [];
       renderSourceSelector();
       renderSourceDetails();
+      renderSourceInsights();
       renderRecords();
       if (!silent) {
         print("Loaded operator state", {
@@ -759,6 +972,7 @@ def operator_console() -> str:
     sourceSelectorEl.addEventListener("change", () => {
       state.selectedSourceId = sourceSelectorEl.value;
       renderSourceDetails();
+      renderSourceInsights();
       renderRecords();
     });
     dateSortButtonEl.addEventListener("click", () => {
@@ -776,7 +990,7 @@ def operator_console() -> str:
     document.getElementById("refresh_btn").addEventListener("click", () => loadAll().catch((error) => print("Refresh failed", String(error))));
     document.getElementById("run_due_btn").addEventListener("click", async () => {
       try {
-        const data = await request("/api/v1/scheduler/run-due", { method: "POST" });
+        const data = await request("/api/v1/scheduler/run-due?force=true", { method: "POST" });
         print("Scheduler run", data);
         await loadAll();
       } catch (error) {

@@ -12,6 +12,6 @@ def test_operator_console_renders(client: TestClient) -> None:
     assert "extra_metadata" in response.text
     assert "Active source" in response.text
     assert "Test connection" in response.text
-    assert "Run due schedules" in response.text
+    assert "Run scheduled sources now" in response.text
     assert "Every.org dashboard CSV" in response.text
     assert "Integration details appear here" in response.text

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.connectors.everyorg.config_resolver import resolve_everyorg_config
+from app.connectors.gmail.config_resolver import resolve_gmail_config
 from app.connectors.registry import ConnectorRegistry
 from app.connectors.onecause.config_resolver import resolve_onecause_config
 from app.connectors.pledge.config_resolver import resolve_pledge_config
@@ -60,6 +61,13 @@ def create_source(payload: SourceConfigCreate, db: Session = Depends(get_db)) ->
             )
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if payload.source_system == "gmail":
+        try:
+            source_payload = payload.model_copy(
+                update={"config_json": resolve_gmail_config(payload.config_json)}
+            )
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
         connector = ConnectorRegistry.get_connector(source_payload.source_system, source_payload.config_json)
         connector.validate_config()
@@ -109,12 +117,17 @@ def update_source(
             updated_config = resolve_pledge_config(updated_config)
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if source.source_system == "gmail":
+        try:
+            updated_config = resolve_gmail_config(updated_config)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
         connector = ConnectorRegistry.get_connector(source.source_system, updated_config)
         connector.validate_config()
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.config_json is not None and source.source_system in {"onecause", "everyorg", "pledge"}:
+    if payload.config_json is not None and source.source_system in {"onecause", "everyorg", "pledge", "gmail"}:
         payload = payload.model_copy(update={"config_json": updated_config})
     return source_service.update(db, source, payload)
 
@@ -148,15 +161,20 @@ def trigger_source(
                 "send data to the configured webhook endpoint instead."
             ),
         )
-    run = ingestion_service.execute(
-        db,
-        source,
-        run_type=payload.run_type,
-        trigger_type=payload.trigger_type,
-        object_types=payload.object_types,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
-    )
+    try:
+        run = ingestion_service.execute(
+            db,
+            source,
+            run_type=payload.run_type,
+            trigger_type=payload.trigger_type,
+            object_types=payload.object_types,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return TriggerIngestionResponse(
         ingestion_run_id=run.id,
         status=run.status,

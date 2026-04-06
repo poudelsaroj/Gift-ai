@@ -32,6 +32,9 @@ class NormalizationService:
             return
         if raw_object.source_system == "pledge" and raw_object.external_object_type == "donations":
             self._upsert_pledge_gift(db, raw_object, payload)
+            return
+        if raw_object.source_system == "gmail" and raw_object.external_object_type == "gift_extract":
+            self._upsert_gmail_gift(db, raw_object, payload)
 
     def list_gifts(self, db: Session, offset: int = 0, limit: int = 100) -> tuple[list[StagingGift], int]:
         items = list(
@@ -374,10 +377,72 @@ class NormalizationService:
         }
         db.add(record)
 
+    def _upsert_gmail_gift(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
+        record = db.scalar(select(StagingGift).where(StagingGift.raw_object_id == raw_object.id))
+        if record is None:
+            record = StagingGift(raw_object_id=raw_object.id)
+
+        record.record_type = payload.get("recordType") or "gift"
+        record.source_record_id = (
+            str(payload.get("sourceRecordId")) if payload.get("sourceRecordId") else None
+        )
+        record.source_parent_id = (
+            str(payload.get("sourceParentId")) if payload.get("sourceParentId") else None
+        )
+        record.gift_id = str(payload.get("giftId")) if payload.get("giftId") else record.source_record_id
+        record.source_channel = raw_object.source_channel
+        record.source_system = raw_object.source_system
+        record.source_file_id = payload.get("sourceFileId") or payload.get("sourceFilename")
+        record.primary_name = payload.get("primaryName") or payload.get("donorName")
+        record.primary_email = payload.get("primaryEmail") or payload.get("donorEmail")
+        record.donor_name = payload.get("donorName") or record.primary_name
+        record.donor_email = payload.get("donorEmail") or record.primary_email
+        record.company_name = payload.get("companyName")
+        record.amount = self._to_decimal(payload.get("amount"))
+        record.currency = payload.get("currency") or "USD"
+        record.record_date = self._parse_date(payload.get("recordDate") or payload.get("giftDate"))
+        record.gift_date = self._parse_date(payload.get("giftDate"))
+        record.payment_type = payload.get("paymentType") or "email"
+        record.gift_type = payload.get("giftType") or "donation"
+        record.campaign_id = payload.get("campaignId")
+        record.campaign_name = payload.get("campaignName")
+        record.challenge_id = None
+        record.challenge_name = None
+        record.related_entity_id = (
+            str(payload.get("relatedEntityId")) if payload.get("relatedEntityId") else payload.get("messageId")
+        )
+        record.related_entity_name = payload.get("relatedEntityName") or payload.get("sourceMedium")
+        record.participant_id = None
+        record.participant_name = None
+        record.team_id = None
+        record.team_name = None
+        record.charity_id = None
+        record.receipt_number = payload.get("receiptNumber")
+        record.memo = payload.get("memo")
+        record.raw_payload_ref = raw_object.raw_payload_ref
+        record.status = "extracted"
+        record.duplicate_status = raw_object.duplicate_status
+        record.confidence_score = self._to_float(payload.get("confidenceScore")) or 0.65
+        record.extra_metadata = {
+            "message_id": payload.get("messageId"),
+            "source_medium": payload.get("sourceMedium"),
+            "source_filename": payload.get("sourceFilename"),
+            "source_attachment_id": payload.get("sourceAttachmentId"),
+        }
+        db.add(record)
+
     def _to_decimal(self, value: Any) -> Decimal | None:
         if value is None or value == "":
             return None
         return Decimal(str(value))
+
+    def _to_float(self, value: Any) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _first_dict(self, payload: dict[str, Any], *keys: str) -> dict[str, Any]:
         for key in keys:

@@ -124,3 +124,26 @@ def test_create_pledge_source_uses_env_defaults(client: TestClient, monkeypatch)
     body = response.json()
     assert body["config_json"]["api_base_url"] == "https://api.pledge.example"
     assert body["config_json"]["api_key"] == "***REDACTED***"
+
+
+def test_trigger_source_returns_422_for_runtime_validation_error(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    created = client.post("/api/v1/sources", json=onecause_payload()).json()
+
+    def raise_value_error(*args, **kwargs):
+        raise ValueError("OpenAI Responses API request failed with status 403: forbidden")
+
+    monkeypatch.setattr(
+        "app.api.routes.sources.ingestion_service.execute",
+        raise_value_error,
+    )
+
+    response = client.post(
+        f"/api/v1/sources/{created['id']}/trigger",
+        json={"run_type": "incremental", "trigger_type": "manual"},
+    )
+
+    assert response.status_code == 422
+    assert "403" in response.json()["detail"]
