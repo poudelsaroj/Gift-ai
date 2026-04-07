@@ -17,6 +17,9 @@ class NormalizationService:
 
     def normalize_raw_object(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
         """Normalize a raw OneCause object into read models."""
+        if raw_object.external_object_type == "gift_extract":
+            self._upsert_gift_extract(db, raw_object, payload)
+            return
         if raw_object.source_system == "onecause":
             if raw_object.external_object_type == "paid_activities":
                 self._upsert_gift(db, raw_object, payload)
@@ -33,8 +36,6 @@ class NormalizationService:
         if raw_object.source_system == "pledge" and raw_object.external_object_type == "donations":
             self._upsert_pledge_gift(db, raw_object, payload)
             return
-        if raw_object.source_system == "gmail" and raw_object.external_object_type == "gift_extract":
-            self._upsert_gmail_gift(db, raw_object, payload)
 
     def list_gifts(self, db: Session, offset: int = 0, limit: int = 100) -> tuple[list[StagingGift], int]:
         items = list(
@@ -377,7 +378,7 @@ class NormalizationService:
         }
         db.add(record)
 
-    def _upsert_gmail_gift(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
+    def _upsert_gift_extract(self, db: Session, raw_object: RawObject, payload: dict[str, Any]) -> None:
         record = db.scalar(select(StagingGift).where(StagingGift.raw_object_id == raw_object.id))
         if record is None:
             record = StagingGift(raw_object_id=raw_object.id)

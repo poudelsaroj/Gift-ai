@@ -7,6 +7,7 @@ from app.api.routes import (
     everyorg_demo,
     everyorg_public,
     everyorg_webhooks,
+    file_imports,
     health,
     ingestion_runs,
     normalized,
@@ -24,6 +25,7 @@ api_router.include_router(everyorg_dashboard.router, tags=["everyorg-dashboard"]
 api_router.include_router(everyorg_demo.router, tags=["everyorg-demo"])
 api_router.include_router(everyorg_public.router, tags=["everyorg-public"])
 api_router.include_router(everyorg_webhooks.router, tags=["everyorg-webhooks"])
+api_router.include_router(file_imports.router, tags=["file-imports"])
 api_router.include_router(pledge_imports.router, tags=["pledge-imports"])
 api_router.include_router(sources.router, tags=["sources"])
 api_router.include_router(ingestion_runs.router, tags=["ingestion-runs"])
