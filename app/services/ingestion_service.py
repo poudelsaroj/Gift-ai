@@ -88,6 +88,7 @@ class IngestionService:
 
         try:
             result = connector.fetch_incremental(request)
+            self._persist_connector_config_updates(db, source, connector)
             raw_objects, duplicates = self._persist_items(db, source, run, result.items)
             run.status = "completed"
             run.completed_at = datetime.now(tz=UTC)
@@ -263,6 +264,20 @@ class IngestionService:
             .limit(1)
         )
         return latest_run.cursor_state if latest_run else None
+
+    def _persist_connector_config_updates(
+        self,
+        db: Session,
+        source: SourceConfig,
+        connector: Any,
+    ) -> None:
+        updates = connector.runtime_config_updates()
+        if not updates:
+            return
+        source.config_json = {**(source.config_json or {}), **updates}
+        db.add(source)
+        db.commit()
+        db.refresh(source)
 
     def _persist_items(
         self,

@@ -44,8 +44,8 @@ class SchedulerService:
                 logger.exception("scheduler_cycle_failed")
             self._stop.wait(self.poll_seconds)
 
-    def run_due_sources(self) -> int:
-        """Execute due scheduled sources and return the number started."""
+    def run_due_sources(self, *, force: bool = False) -> int:
+        """Execute scheduled sources and return the number started."""
         started = 0
         with SessionLocal() as db:
             sources = list(
@@ -55,7 +55,7 @@ class SchedulerService:
             )
             now = datetime.now(tz=UTC)
             for source in sources:
-                if not self._is_due(source, now):
+                if not force and not self._is_due(source, now):
                     continue
                 self.ingestion_service.execute(
                     db,

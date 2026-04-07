@@ -10,7 +10,7 @@ The project is intentionally modular and single-organization only:
 
 - `app/api`: operator/developer-facing HTTP endpoints.
 - `app/api/routes/ui.py`: lightweight operator console for manual workflows.
-- `app/connectors`: pluggable ingestion connectors. OneCause is the first real implementation; email, shared-folder, and portal-export are scaffolded as first-class non-API patterns.
+- `app/connectors`: pluggable ingestion connectors. OneCause, Pledge, Every.org, and Gmail are implemented; generic email, shared-folder, and portal-export remain scaffolded as first-class non-API patterns.
 - `app/services`: orchestration and persistence services for sources, raw objects, and ingestion runs.
 - `app/storage`: raw payload storage abstraction. Filesystem storage is the initial backend.
 - `app/dedupe`: duplicate candidate detection that flags rather than deletes.
@@ -38,6 +38,7 @@ app/
   connectors/
     base/
     email/
+    gmail/
     onecause/
     portal_export/
     shared_folder/
@@ -131,6 +132,21 @@ Defined in `.env.example`:
 - `ONECAUSE_CLIENT_ID`
 - `ONECAUSE_ACCESS_TOKEN`
 - `ONECAUSE_CHALLENGE_ID`
+- `PLEDGE_API_BASE_URL`
+- `PLEDGE_API_KEY`
+- `GMAIL_API_BASE_URL`
+- `GMAIL_USER_ID`
+- `GMAIL_ACCESS_TOKEN`
+- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_TOKEN_URL`
+- `GMAIL_QUERY`
+- `GMAIL_LABEL_IDS`
+- `GMAIL_ATTACHMENT_MAX_BYTES`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_GIFT_EXTRACTION_MODEL`
 - `ENABLE_INPROCESS_SCHEDULER`
 - `SCHEDULER_POLL_SECONDS`
 
@@ -211,6 +227,14 @@ Base prefix: `/api/v1`
 - `GET /normalized/gifts`
 - `POST /scheduler/run-due`
 - `GET /` operator console
+
+Gmail uses the generic source lifecycle:
+
+- `POST /sources/{id}/test`
+- `POST /sources/{id}/trigger`
+- `GET /sources/{id}/ingestion-runs`
+
+Gmail extraction uses the OpenAI Responses API with structured JSON output. Supported attachments are uploaded as files and passed to the model; CSV, TSV, TXT, PDF, and XLSX can be analyzed with file inputs and Code Interpreter. Unsupported attachment types are still retained in raw storage for lineage.
 
 ## OneCause Configuration
 
@@ -306,6 +330,8 @@ The current fixed columns cover the common operating shape:
 - campaign and related-entity attribution
 - team, status, duplicate state, and reference values
 
+Gmail normalization writes model-extracted gift rows into the same `staging_gifts` table, while raw email messages and attachments remain in `raw_objects` for lineage and reprocessing.
+
 Raw payload retention remains the source of truth for lineage. The older `normalized_supporters` table and `/normalized/supporters` endpoint are kept only for compatibility while the UI and new integrations read from `/normalized/records`.
 
 ## Ingestion Runs
@@ -368,6 +394,7 @@ Included tests cover:
 - connector validation
 - OneCause connection testing with mocked HTTP responses
 - OneCause fetch behavior with mocked paginated data
+- Gmail mailbox polling, OpenAI-backed extraction, and normalized persistence
 - dedupe detection
 
 Run:
