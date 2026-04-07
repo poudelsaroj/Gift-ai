@@ -53,7 +53,7 @@ class MockClient:
                 request=request,
             )
         if request.url.path.endswith("/users/me/messages"):
-            assert request.url.params.get("maxResults") in {"10", "3"}
+            assert request.url.params.get("maxResults") in {"10", "3", "1"}
             return httpx.Response(
                 200,
                 json={"messages": [{"id": "msg-3"}, {"id": "msg-2"}, {"id": "msg-1"}], "resultSizeEstimate": 3},
@@ -181,12 +181,18 @@ class MockClient:
             return httpx.Response(200, json={"data": attachment_body}, request=request)
         raise AssertionError(f"Unhandled request: {request.url}")
 
+    def post(self, url: str, data=None, **kwargs):
+        request = httpx.Request("POST", url, data=data)
+        if url.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "gmail-token"}, request=request)
+        raise AssertionError(f"Unhandled POST request: {url}")
+
 
 class RefreshingMockClient(MockClient):
     def request(self, method: str, url: str, headers=None, params=None, json=None):
         request = httpx.Request(method, url, headers=headers, params=params, json=json)
         auth_header = (headers or {}).get("Authorization", "")
-        if request.url.path.endswith("/users/me/messages") and auth_header == "Bearer gmail-token":
+        if request.url.path.endswith("/users/me/profile") and auth_header == "Bearer gmail-token":
             return httpx.Response(401, json={"error": {"message": "Invalid Credentials"}}, request=request)
         return super().request(method, url, headers=headers, params=params, json=json)
 
@@ -269,6 +275,7 @@ def test_gmail_fetch_emits_message_attachment_and_gift(monkeypatch) -> None:
     )
 
     connector = GmailConnector(gmail_config())
+    connector.typed_config.max_messages_per_sync = 1
     result = connector.fetch(
         FetchRequest(
             run_type="incremental",
@@ -280,14 +287,11 @@ def test_gmail_fetch_emits_message_attachment_and_gift(monkeypatch) -> None:
     object_types = [item.object_type for item in result.items]
     assert "email_message" in object_types
     assert "gift_extract" in object_types
-    assert object_types.count("email_message") == 2
+    assert object_types.count("email_message") == 1
     gift_items = [item for item in result.items if item.object_type == "gift_extract"]
-    assert {item.payload["primaryEmail"] for item in gift_items} == {
-        "middle@example.org",
-        "newest@example.org",
-    }
+    assert {item.payload["primaryEmail"] for item in gift_items} == {"newest@example.org"}
     assert result.cursor_state["gmail"]["last_internal_date_ms"] == 1775520000000
-    assert result.metadata["messages_processed"] == 2
+    assert result.metadata["messages_processed"] == 1
     assert result.metadata["processing_scope"] == "incremental_since_last_fetch"
 
 
@@ -299,3 +303,92 @@ def test_gmail_refreshes_access_token_after_unauthorized(monkeypatch) -> None:
     response = connector.test_connection()
 
     assert response["ok"] is True
+    assert connector.runtime_config_updates() == {"access_token": "fresh-token"}
+
+
+def test_gmail_dedupes_same_gift_between_email_body_and_attachment(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-test-key")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.connectors.gmail.client.httpx.Client", MockClient)
+    monkeypatch.setattr(
+        "app.services.openai_email_extraction_service.OpenAIEmailExtractionService.extract",
+        lambda self, *, email, source_system: {
+            "is_gift_email": True,
+            "extraction_summary": "Detected duplicate gift in body and attachment.",
+            "unsupported_attachments": [],
+            "gifts": [
+                {
+                    "recordType": "gift",
+                    "sourceRecordId": "gift-body-1",
+                    "sourceParentId": email.message_id,
+                    "giftId": "gift-body-1",
+                    "sourceFileId": None,
+                    "primaryName": "Olivia Martinez",
+                    "primaryEmail": "olivia@example.org",
+                    "donorName": "Olivia Martinez",
+                    "donorEmail": "olivia@example.org",
+                    "companyName": None,
+                    "amount": "8500.00",
+                    "currency": "USD",
+                    "recordDate": "2026-04-07",
+                    "giftDate": "2026-04-07",
+                    "paymentType": "email",
+                    "giftType": "donation",
+                    "campaignId": None,
+                    "campaignName": "Gift",
+                    "relatedEntityId": email.message_id,
+                    "relatedEntityName": "email_body",
+                    "receiptNumber": None,
+                    "memo": "Body version",
+                    "confidenceScore": 0.80,
+                    "sourceMedium": "email_body",
+                    "sourceFilename": None,
+                    "sourceAttachmentId": None,
+                    "messageId": email.message_id,
+                },
+                {
+                    "recordType": "gift",
+                    "sourceRecordId": "gift-attachment-1",
+                    "sourceParentId": email.message_id,
+                    "giftId": "gift-attachment-1",
+                    "sourceFileId": "gift-report.csv",
+                    "primaryName": "Olivia Martinez",
+                    "primaryEmail": "olivia@example.org",
+                    "donorName": "Olivia Martinez",
+                    "donorEmail": "olivia@example.org",
+                    "companyName": None,
+                    "amount": "8500.00",
+                    "currency": "USD",
+                    "recordDate": "2026-04-07",
+                    "giftDate": "2026-04-07",
+                    "paymentType": "email_attachment",
+                    "giftType": "donation",
+                    "campaignId": None,
+                    "campaignName": "Gift",
+                    "relatedEntityId": email.message_id,
+                    "relatedEntityName": "attachment_csv",
+                    "receiptNumber": None,
+                    "memo": "Attachment version",
+                    "confidenceScore": 0.92,
+                    "sourceMedium": "attachment_csv",
+                    "sourceFilename": "gift-report.csv",
+                    "sourceAttachmentId": "att-1",
+                    "messageId": email.message_id,
+                },
+            ],
+        },
+    )
+    connector = GmailConnector(gmail_config())
+    connector.typed_config.max_messages_per_sync = 1
+    result = connector.fetch(
+        FetchRequest(
+            run_type="incremental",
+            trigger_type="manual",
+            cursor_state={"gmail": {"last_internal_date_ms": 1775433600000}},
+        )
+    )
+
+    gift_items = [item for item in result.items if item.object_type == "gift_extract"]
+    assert len(gift_items) == 1
+    assert gift_items[0].payload["sourceMedium"] == "attachment_csv"
+    assert gift_items[0].payload["primaryEmail"] == "olivia@example.org"

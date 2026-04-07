@@ -31,6 +31,10 @@ class BaseConnector(ABC):
         """Default incremental behavior delegates to fetch."""
         return self.fetch(request)
 
+    def runtime_config_updates(self) -> dict[str, Any] | None:
+        """Return connector-generated config updates worth persisting."""
+        return None
+
     @abstractmethod
     def normalize_raw_metadata(self, payload: dict[str, Any] | list[Any] | str) -> dict[str, Any]:
         """Extract light metadata for raw payload tracking."""

@@ -42,6 +42,12 @@ class GmailConnector(BaseConnector):
     def list_supported_objects(self) -> list[str]:
         return ["email_message", "email_attachment", "gift_extract"]
 
+    def runtime_config_updates(self) -> dict[str, Any] | None:
+        token = self.client.current_access_token()
+        if not token:
+            return None
+        return {"access_token": token}
+
     def fetch(self, request: FetchRequest) -> FetchResult:
         object_types = request.object_types or self.typed_config.enabled_object_types
         previous_cursor = (request.cursor_state or {}).get("gmail") or {}

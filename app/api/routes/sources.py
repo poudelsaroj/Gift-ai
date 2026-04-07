@@ -142,6 +142,12 @@ def test_source(source_id: int, db: Session = Depends(get_db)) -> SourceTestResp
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     details = connector.test_connection()
+    updates = connector.runtime_config_updates()
+    if updates:
+        source.config_json = {**(source.config_json or {}), **updates}
+        db.add(source)
+        db.commit()
+        db.refresh(source)
     return SourceTestResponse(ok=True, source_id=source_id, details=details)
 
 

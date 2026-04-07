@@ -88,7 +88,8 @@ class EmailGiftExtractionService:
                 )
             )
 
-        for index, gift in enumerate(extraction.get("gifts") or [], start=1):
+        deduped_gifts = self._dedupe_gifts(extraction.get("gifts") or [], email.message_id)
+        for index, gift in enumerate(deduped_gifts, start=1):
             if not isinstance(gift, dict):
                 continue
             payload = dict(gift)
@@ -128,6 +129,40 @@ class EmailGiftExtractionService:
                 )
             )
         return items
+
+    def _dedupe_gifts(self, gifts: list[Any], message_id: str) -> list[dict[str, Any]]:
+        selected: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for candidate in gifts:
+            if not isinstance(candidate, dict):
+                continue
+            payload = dict(candidate)
+            payload.setdefault("messageId", message_id)
+            dedupe_key = (
+                payload.get("messageId"),
+                payload.get("primaryEmail") or payload.get("donorEmail"),
+                payload.get("amount"),
+                payload.get("currency"),
+                payload.get("recordDate") or payload.get("giftDate"),
+                payload.get("campaignId") or payload.get("campaignName"),
+                payload.get("receiptNumber"),
+            )
+            existing = selected.get(dedupe_key)
+            if existing is None or self._gift_priority(payload) > self._gift_priority(existing):
+                selected[dedupe_key] = payload
+        return list(selected.values())
+
+    def _gift_priority(self, payload: dict[str, Any]) -> tuple[int, int]:
+        source_medium = str(payload.get("sourceMedium") or "").lower()
+        has_attachment = 1 if payload.get("sourceAttachmentId") or payload.get("sourceFilename") else 0
+        attachment_hint = 1 if "attachment" in source_medium or source_medium in {"pdf", "csv", "xlsx", "xls", "tsv", "txt"} else 0
+        confidence = self._to_priority_number(payload.get("confidenceScore"))
+        return (has_attachment + attachment_hint, confidence)
+
+    def _to_priority_number(self, value: Any) -> int:
+        try:
+            return int(float(value or 0) * 1000)
+        except (TypeError, ValueError):
+            return 0
 
     def parse_gmail_message(
         self,

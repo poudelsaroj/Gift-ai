@@ -15,9 +15,10 @@ class GmailAPIClient:
     def __init__(self, config: GmailConfig) -> None:
         self.config = config
         self.base_url = config.api_base_url.rstrip("/")
-        self._access_token = (
+        self._configured_access_token = (
             config.access_token.get_secret_value() if config.access_token is not None else None
         )
+        self._access_token: str | None = None
 
     def get_profile(self) -> dict[str, Any]:
         """Fetch the authenticated mailbox profile."""
@@ -63,26 +64,62 @@ class GmailAPIClient:
         content: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with httpx.Client(timeout=30.0) as client:
+            response = self._request_with_best_available_token(
+                client,
+                method=method,
+                path=path,
+                params=params,
+                content=content,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    def _request_with_best_available_token(
+        self,
+        client: httpx.Client,
+        *,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        content: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        configured_token = self._configured_access_token
+        if configured_token:
             response = self._send_request(
                 client,
                 method=method,
                 path=path,
                 params=params,
                 content=content,
-                token=self._get_access_token(),
+                token=configured_token,
             )
-            if response.status_code == 401 and self._can_refresh_token():
-                self._access_token = None
-                response = self._send_request(
-                    client,
-                    method=method,
-                    path=path,
-                    params=params,
-                    content=content,
-                    token=self._get_access_token(),
-                )
-            response.raise_for_status()
-            return response.json()
+            if response.status_code != 401:
+                self._access_token = configured_token
+                return response
+
+        if self._can_refresh_token():
+            self._access_token = None
+            response = self._send_request(
+                client,
+                method=method,
+                path=path,
+                params=params,
+                content=content,
+                token=self._refresh_access_token(),
+            )
+            return response
+
+        if self._access_token and self._access_token != configured_token:
+            return self._send_request(
+                client,
+                method=method,
+                path=path,
+                params=params,
+                content=content,
+                token=self._access_token,
+            )
+
+        raise ValueError("No Gmail access token is available.")
 
     def _send_request(
         self,
@@ -106,11 +143,20 @@ class GmailAPIClient:
         if self._access_token:
             return self._access_token
 
+        if self._configured_access_token:
+            return self._configured_access_token
+
+        if self._can_refresh_token():
+            return self._refresh_access_token()
+
+        raise ValueError("No Gmail access token is available.")
+
+    def _refresh_access_token(self) -> str:
         refresh_token = self._secret_value(self.config.refresh_token)
         client_id = self._secret_value(self.config.client_id)
         client_secret = self._secret_value(self.config.client_secret)
         if not refresh_token or not client_id or not client_secret:
-            raise ValueError("No Gmail access token is available.")
+            raise ValueError("No Gmail refresh token credentials are available.")
 
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
@@ -129,6 +175,9 @@ class GmailAPIClient:
             raise ValueError("Gmail token refresh did not return access_token.")
         self._access_token = token
         return token
+
+    def current_access_token(self) -> str | None:
+        return self._access_token or self._configured_access_token
 
     def _can_refresh_token(self) -> bool:
         return all(
