@@ -382,6 +382,16 @@ def operator_console() -> str:
           <div class="banner" id="integration_note">
             Integration details appear here for the selected source.
           </div>
+          <div class="stack" id="tabular_upload_tools" style="display:none;">
+            <div class="row">
+              <label for="tabular_import_file">Canonical CSV / XLSX upload</label>
+              <input id="tabular_import_file" type="file" accept=".csv,.tsv,.xlsx" />
+            </div>
+            <div class="actions">
+              <button id="tabular_import_btn" class="alt">Upload and normalize</button>
+            </div>
+            <small>Uploads a CSV, TSV, or XLSX file to OpenAI for canonical gift extraction, then saves the normalized rows into the selected source.</small>
+          </div>
           <div class="stack" id="everyorg_tools" style="display:none;">
             <div class="row">
               <label for="everyorg_import_file">Every.org dashboard CSV</label>
@@ -491,6 +501,8 @@ def operator_console() -> str:
     const integrationNoteEl = document.getElementById("integration_note");
     const everyOrgToolsEl = document.getElementById("everyorg_tools");
     const everyOrgImportFileEl = document.getElementById("everyorg_import_file");
+    const tabularUploadToolsEl = document.getElementById("tabular_upload_tools");
+    const tabularImportFileEl = document.getElementById("tabular_import_file");
     const detailSystemEl = document.getElementById("detail_system");
     const detailModeEl = document.getElementById("detail_mode");
     const detailScheduleEl = document.getElementById("detail_schedule");
@@ -789,6 +801,7 @@ def operator_console() -> str:
         sourceNoteEl.textContent = "Canonical table across every source. Select a specific source only when you want source-specific actions or details.";
         integrationNoteEl.textContent = "The table on the right is the single shared model. Source selection is optional and only acts as a filter.";
         everyOrgToolsEl.style.display = "none";
+        tabularUploadToolsEl.style.display = "none";
         Object.values(actionButtons).forEach((btn) => { btn.disabled = true; });
         return;
       }
@@ -818,6 +831,7 @@ def operator_console() -> str:
       sourceNoteEl.innerHTML = isWebhookOnly
         ? "This source is webhook-driven. Manual OneCause sync actions are disabled."
         : `Selected source <strong>${source.source_name}</strong>. Sync actions run against this source only.`;
+      tabularUploadToolsEl.style.display = isWebhookOnly ? "none" : "grid";
 
       if (source.source_system === "everyorg") {
         everyOrgToolsEl.style.display = "grid";
@@ -969,6 +983,34 @@ def operator_console() -> str:
       await loadAll();
     }
 
+    async function importCanonicalTabularFile() {
+      const source = selectedSource();
+      const file = tabularImportFileEl.files && tabularImportFileEl.files[0];
+      if (!source) {
+        print("Tabular import blocked", "Select a source first.");
+        return;
+      }
+      if (!file) {
+        print("Tabular import blocked", "Choose a CSV, TSV, or XLSX file first.");
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`/api/v1/files/sources/${source.id}/imports/canonical`, {
+        method: "POST",
+        body: formData,
+      });
+      const text = await response.text();
+      let body = text;
+      try { body = text ? JSON.parse(text) : {}; } catch (_) {}
+      if (!response.ok) {
+        print("Canonical file import failed", body);
+        throw new Error(typeof body === "string" ? body : JSON.stringify(body));
+      }
+      print("Canonical file import completed", body);
+      await loadAll();
+    }
+
     sourceSelectorEl.addEventListener("change", () => {
       state.selectedSourceId = sourceSelectorEl.value;
       renderSourceDetails();
@@ -987,6 +1029,7 @@ def operator_console() -> str:
     actionButtons.supporters.addEventListener("click", () => runAction("supporters").catch((error) => print("Supporters failed", String(error))));
     actionButtons.full.addEventListener("click", () => runAction("full").catch((error) => print("Full sync failed", String(error))));
     document.getElementById("everyorg_import_btn").addEventListener("click", () => importEveryOrgDashboardCsv().catch((error) => print("Every.org import failed", String(error))));
+    document.getElementById("tabular_import_btn").addEventListener("click", () => importCanonicalTabularFile().catch((error) => print("Canonical import failed", String(error))));
     document.getElementById("refresh_btn").addEventListener("click", () => loadAll().catch((error) => print("Refresh failed", String(error))));
     document.getElementById("run_due_btn").addEventListener("click", async () => {
       try {

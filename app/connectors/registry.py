@@ -1,6 +1,7 @@
 """Connector registry and factory."""
 
 from app.connectors.base.connector import BaseConnector
+from app.connectors.csv.connector import CsvConnector
 from app.connectors.email.connector import EmailConnector
 from app.connectors.everyorg.connector import EveryOrgConnector
 from app.connectors.gmail.connector import GmailConnector
@@ -18,6 +19,7 @@ class ConnectorRegistry:
         "pledge": PledgeConnector,
         "everyorg": EveryOrgConnector,
         "gmail": GmailConnector,
+        "csv": CsvConnector,
         "email": EmailConnector,
         "shared_folder": SharedFolderConnector,
         "portal_export": PortalExportConnector,

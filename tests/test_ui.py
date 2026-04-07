@@ -13,5 +13,7 @@ def test_operator_console_renders(client: TestClient) -> None:
     assert "Active source" in response.text
     assert "Test connection" in response.text
     assert "Run scheduled sources now" in response.text
+    assert "Canonical CSV / XLSX upload" in response.text
+    assert "Upload and normalize" in response.text
     assert "Every.org dashboard CSV" in response.text
     assert "Integration details appear here" in response.text

@@ -36,12 +36,31 @@ def pledge_payload() -> dict:
     }
 
 
+def csv_payload() -> dict:
+    return {
+        "source_name": "CSV Uploads",
+        "source_system": "csv",
+        "acquisition_mode": "file_upload",
+        "auth_type": "manual",
+        "enabled": True,
+        "config_json": {},
+    }
+
+
 def test_create_source(client: TestClient) -> None:
     response = client.post("/api/v1/sources", json=onecause_payload())
     assert response.status_code == 201
     body = response.json()
     assert body["source_name"] == "OneCause Primary"
     assert body["source_system"] == "onecause"
+
+
+def test_create_csv_source(client: TestClient) -> None:
+    response = client.post("/api/v1/sources", json=csv_payload())
+    assert response.status_code == 201
+    body = response.json()
+    assert body["source_name"] == "CSV Uploads"
+    assert body["source_system"] == "csv"
 
 
 def test_create_source_uses_env_defaults(client: TestClient, monkeypatch) -> None:
