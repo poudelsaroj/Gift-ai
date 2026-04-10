@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install run test lint format migrate upgrade downgrade revision seed
+.PHONY: install run test lint format migrate upgrade downgrade revision seed frontend-install frontend-dev frontend-build
 
 install:
 	$(PYTHON) -m pip install -e .[dev]
@@ -32,3 +32,11 @@ revision:
 seed:
 	$(PYTHON) scripts/seed_onecause_source.py
 
+frontend-install:
+	cd frontend && npm install
+
+frontend-dev:
+	cd frontend && NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+
+frontend-build:
+	cd frontend && npm run build

@@ -39,7 +39,7 @@ def _get_pledge_source_or_404(db: Session, source_id: int) -> SourceConfig:
 
 
 @router.post("/sources/{source_id}/imports/donations", response_model=PledgeCSVImportResponse)
-async def import_pledge_donations_csv(
+def import_pledge_donations_csv(
     source_id: int,
     file: Annotated[UploadFile, File(...)],
     db: Annotated[Session, Depends(get_db)],
@@ -49,7 +49,7 @@ async def import_pledge_donations_csv(
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Upload a CSV export file.")
 
-    content = await file.read()
+    content = file.file.read()
     items = import_service.parse_csv(content, filename=file.filename, source=source)
     if not items:
         raise HTTPException(

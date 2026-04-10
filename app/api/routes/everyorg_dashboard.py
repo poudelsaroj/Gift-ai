@@ -45,7 +45,7 @@ def _get_everyorg_source_or_404(db: Session, source_id: int) -> SourceConfig:
     "/sources/{source_id}/imports/donations",
     response_model=EveryOrgDashboardImportResponse,
 )
-async def import_everyorg_dashboard_donations(
+def import_everyorg_dashboard_donations(
     source_id: int,
     file: Annotated[UploadFile, File(...)],
     db: Annotated[Session, Depends(get_db)],
@@ -58,7 +58,7 @@ async def import_everyorg_dashboard_donations(
             detail="Upload a CSV export file.",
         )
 
-    content = await file.read()
+    content = file.file.read()
     items = import_service.parse_csv(content, filename=file.filename, source=source)
     if not items:
         raise HTTPException(

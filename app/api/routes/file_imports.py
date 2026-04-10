@@ -43,13 +43,18 @@ def _get_source_or_404(db: Session, source_id: int) -> SourceConfig:
 
 
 @router.post("/sources/{source_id}/imports/canonical", response_model=FileImportResponse)
-async def import_canonical_file(
+def import_canonical_file(
     source_id: int,
     file: Annotated[UploadFile, File(...)],
     db: Annotated[Session, Depends(get_db)],
 ) -> FileImportResponse:
     """Upload a CSV/TSV/XLSX file and normalize gift rows into canonical data."""
     source = _get_source_or_404(db, source_id)
+    if source.source_system != "csv" or source.acquisition_mode != "file_upload":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Canonical file imports are only supported for csv file_upload sources.",
+        )
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Upload a file.")
     extension = _extension(file.filename)
@@ -59,7 +64,7 @@ async def import_canonical_file(
             detail="Upload a CSV, TSV, or XLSX file.",
         )
 
-    content = await file.read()
+    content = file.file.read()
     extraction = import_service.extract(
         content=content,
         filename=file.filename,

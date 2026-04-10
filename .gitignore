@@ -13,3 +13,5 @@ build/
 *.db
 .env
 raw_storage/
+frontend/.next/
+frontend/node_modules/

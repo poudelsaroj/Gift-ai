@@ -424,12 +424,15 @@ class NormalizationService:
         record.status = "extracted"
         record.duplicate_status = raw_object.duplicate_status
         record.confidence_score = self._to_float(payload.get("confidenceScore")) or 0.65
+        extra_metadata = payload.get("extraMetadata")
         record.extra_metadata = {
             "message_id": payload.get("messageId"),
             "source_medium": payload.get("sourceMedium"),
             "source_filename": payload.get("sourceFilename"),
             "source_attachment_id": payload.get("sourceAttachmentId"),
         }
+        if isinstance(extra_metadata, dict):
+            record.extra_metadata = {**record.extra_metadata, **extra_metadata}
         db.add(record)
 
     def _to_decimal(self, value: Any) -> Decimal | None:

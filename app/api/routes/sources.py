@@ -27,6 +27,12 @@ from app.services.source_service import SourceService
 router = APIRouter(prefix="/api/v1/sources")
 source_service = SourceService()
 ingestion_service = IngestionService()
+_CONFIG_RESOLVERS = {
+    "onecause": resolve_onecause_config,
+    "everyorg": resolve_everyorg_config,
+    "pledge": resolve_pledge_config,
+    "gmail": resolve_gmail_config,
+}
 
 
 def _get_source_or_404(db: Session, source_id: int) -> SourceConfig:
@@ -36,41 +42,41 @@ def _get_source_or_404(db: Session, source_id: int) -> SourceConfig:
     return source
 
 
+def _resolve_source_config(source_system: str, config_json: dict) -> dict:
+    resolver = _CONFIG_RESOLVERS.get(source_system)
+    if not resolver:
+        return config_json
+    return resolver(config_json)
+
+
+def _validate_connector_payload(
+    *,
+    source_system: str,
+    acquisition_mode: str,
+    config_json: dict,
+):
+    connector = ConnectorRegistry.get_connector(source_system, config_json)
+    connector.validate_config()
+    connector_mode = getattr(connector, "acquisition_mode", acquisition_mode)
+    if connector_mode != acquisition_mode:
+        raise ValueError(
+            f"{source_system} sources must use acquisition_mode='{connector_mode}'."
+        )
+    return connector
+
+
 @router.post("", response_model=SourceConfigRead, status_code=status.HTTP_201_CREATED)
 def create_source(payload: SourceConfigCreate, db: Session = Depends(get_db)) -> SourceConfig:
     """Create a source config."""
-    source_payload = payload
-    if payload.source_system == "onecause":
-        try:
-            source_payload = payload.model_copy(
-                update={"config_json": resolve_onecause_config(payload.config_json)}
-            )
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.source_system == "everyorg":
-        try:
-            source_payload = payload.model_copy(
-                update={"config_json": resolve_everyorg_config(payload.config_json)}
-            )
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.source_system == "pledge":
-        try:
-            source_payload = payload.model_copy(
-                update={"config_json": resolve_pledge_config(payload.config_json)}
-            )
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.source_system == "gmail":
-        try:
-            source_payload = payload.model_copy(
-                update={"config_json": resolve_gmail_config(payload.config_json)}
-            )
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
-        connector = ConnectorRegistry.get_connector(source_payload.source_system, source_payload.config_json)
-        connector.validate_config()
+        source_payload = payload.model_copy(
+            update={"config_json": _resolve_source_config(payload.source_system, payload.config_json)}
+        )
+        _validate_connector_payload(
+            source_system=source_payload.source_system,
+            acquisition_mode=source_payload.acquisition_mode,
+            config_json=source_payload.config_json,
+        )
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return source_service.create(db, source_payload)
@@ -102,32 +108,16 @@ def update_source(
     """Patch a source config."""
     source = _get_source_or_404(db, source_id)
     updated_config = source.config_json if payload.config_json is None else payload.config_json
-    if source.source_system == "onecause":
-        try:
-            updated_config = resolve_onecause_config(updated_config)
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if source.source_system == "everyorg":
-        try:
-            updated_config = resolve_everyorg_config(updated_config)
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if source.source_system == "pledge":
-        try:
-            updated_config = resolve_pledge_config(updated_config)
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if source.source_system == "gmail":
-        try:
-            updated_config = resolve_gmail_config(updated_config)
-        except (ValidationError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     try:
-        connector = ConnectorRegistry.get_connector(source.source_system, updated_config)
-        connector.validate_config()
+        updated_config = _resolve_source_config(source.source_system, updated_config)
+        _validate_connector_payload(
+            source_system=source.source_system,
+            acquisition_mode=source.acquisition_mode,
+            config_json=updated_config,
+        )
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if payload.config_json is not None and source.source_system in {"onecause", "everyorg", "pledge", "gmail"}:
+    if payload.config_json is not None and source.source_system in _CONFIG_RESOLVERS:
         payload = payload.model_copy(update={"config_json": updated_config})
     return source_service.update(db, source, payload)
 
@@ -137,8 +127,11 @@ def test_source(source_id: int, db: Session = Depends(get_db)) -> SourceTestResp
     """Test source connectivity."""
     source = _get_source_or_404(db, source_id)
     try:
-        connector = ConnectorRegistry.get_connector(source.source_system, source.config_json)
-        connector.validate_config()
+        connector = _validate_connector_payload(
+            source_system=source.source_system,
+            acquisition_mode=source.acquisition_mode,
+            config_json=source.config_json,
+        )
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     details = connector.test_connection()

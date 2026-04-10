@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
     app_name: str = Field(default="gift-ingestion-backend", alias="APP_NAME")
     api_prefix: str = Field(default="/api/v1", alias="API_PREFIX")
+    backend_cors_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        alias="BACKEND_CORS_ORIGINS",
+    )
+    frontend_app_url: str = Field(default="http://127.0.0.1:3000", alias="FRONTEND_APP_URL")
     database_url: str = Field(
         default="postgresql+psycopg://gift_user:gift_pass@localhost:5432/gift_ingestion",
         alias="DATABASE_URL",

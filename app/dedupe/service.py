@@ -44,25 +44,28 @@ class DedupeService:
                 "source_system_external_object_id_match",
             )
 
-        filename_heuristic = db.scalar(
-            select(RawObject).where(
-                RawObject.id != candidate.id,
-                and_(
-                    RawObject.original_filename.is_not(None),
-                    RawObject.original_filename == candidate.original_filename,
-                    or_(
-                        RawObject.event_timestamp == candidate.event_timestamp,
-                        RawObject.fetched_at == candidate.fetched_at,
+        # Filename matching is a file-level heuristic only. Extracted row-level JSON objects
+        # often inherit the same filename and timestamps from a single import batch.
+        if candidate.content_type != "application/json":
+            filename_heuristic = db.scalar(
+                select(RawObject).where(
+                    RawObject.id != candidate.id,
+                    RawObject.content_type != "application/json",
+                    and_(
+                        RawObject.original_filename.is_not(None),
+                        RawObject.original_filename == candidate.original_filename,
+                        or_(
+                            RawObject.event_timestamp == candidate.event_timestamp,
+                            RawObject.fetched_at == candidate.fetched_at,
+                        ),
                     ),
-                ),
+                )
             )
-        )
-        if filename_heuristic:
-            return DedupeDecision(
-                "possible_duplicate",
-                filename_heuristic.id,
-                "filename_timestamp_heuristic",
-            )
+            if filename_heuristic:
+                return DedupeDecision(
+                    "possible_duplicate",
+                    filename_heuristic.id,
+                    "filename_timestamp_heuristic",
+                )
 
         return DedupeDecision("unique")
-

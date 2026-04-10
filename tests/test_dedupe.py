@@ -44,3 +44,27 @@ def test_dedupe_detects_external_id_match(db_session) -> None:
     assert decision.status == "confirmed_duplicate"
     assert decision.duplicate_of_id == existing.id
 
+
+def test_dedupe_ignores_filename_heuristic_for_json_rows(db_session) -> None:
+    existing = build_raw_object(
+        checksum_sha256="checksum-1",
+        external_object_id="row-1",
+        original_filename="donations.csv",
+        content_type="application/json",
+    )
+    db_session.add(existing)
+    db_session.commit()
+    db_session.refresh(existing)
+
+    candidate = build_raw_object(
+        checksum_sha256="checksum-2",
+        external_object_id="row-2",
+        original_filename="donations.csv",
+        content_type="application/json",
+    )
+    db_session.add(candidate)
+    db_session.flush()
+
+    decision = DedupeService().detect(db_session, candidate)
+
+    assert decision.status == "unique"

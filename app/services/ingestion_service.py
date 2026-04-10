@@ -1,50 +1,41 @@
 """Ingestion execution service."""
 
-from datetime import UTC, datetime
+from __future__ import annotations
+
 from typing import Any
 
 import structlog
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.connectors.registry import ConnectorRegistry
 from app.connectors.base.types import FetchRequest, RawFetchItem
-from app.core.config import get_settings
-from app.dedupe.service import DedupeService
+from app.connectors.registry import ConnectorRegistry
 from app.models.ingestion_run import IngestionRun
 from app.models.raw_object import RawObject
 from app.models.source_config import SourceConfig
-from app.storage.filesystem import FilesystemStorage
+from app.services.ingestion_run_service import IngestionRunService
+from app.services.raw_item_ingestion_service import RawItemIngestionService
 from app.utils.security import redact_config
-from app.services.normalization_service import NormalizationService
-from app.services.raw_object_service import RawObjectService
 
 logger = structlog.get_logger(__name__)
 
 
 class IngestionService:
-    """Coordinates connector execution, raw storage, and run tracking."""
+    """Coordinate connector execution, run lifecycle, and raw-item persistence."""
 
-    def __init__(self) -> None:
-        settings = get_settings()
-        self.storage = FilesystemStorage(settings.raw_storage_root)
-        self.raw_object_service = RawObjectService()
-        self.dedupe_service = DedupeService()
-        self.normalization_service = NormalizationService()
+    def __init__(
+        self,
+        *,
+        connector_registry: Any = ConnectorRegistry,
+        ingestion_run_service: IngestionRunService | None = None,
+        raw_item_ingestion_service: RawItemIngestionService | None = None,
+    ) -> None:
+        self.connector_registry = connector_registry
+        self.ingestion_run_service = ingestion_run_service or IngestionRunService()
+        self.raw_item_ingestion_service = raw_item_ingestion_service or RawItemIngestionService()
 
     def create_run(self, db: Session, source_id: int, run_type: str, trigger_type: str) -> IngestionRun:
         """Create a pending ingestion run."""
-        run = IngestionRun(
-            source_id=source_id,
-            run_type=run_type,
-            trigger_type=trigger_type,
-            status="pending",
-            metadata_json={},
-        )
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return run
+        return self.ingestion_run_service.create_pending_run(db, source_id, run_type, trigger_type)
 
     def execute(
         self,
@@ -54,19 +45,15 @@ class IngestionService:
         run_type: str,
         trigger_type: str,
         object_types: list[str] | None = None,
-        start_time: datetime | None = None,
-        end_time: datetime | None = None,
+        start_time: Any = None,
+        end_time: Any = None,
     ) -> IngestionRun:
         """Execute an ingestion run synchronously."""
-        connector = ConnectorRegistry.get_connector(source.source_system, source.config_json)
+        connector = self._create_connector(source)
         connector.validate_config()
 
-        run = self.create_run(db, source.id, run_type, trigger_type)
-        run.status = "running"
-        run.started_at = datetime.now(tz=UTC)
-        db.add(run)
-        db.commit()
-        db.refresh(run)
+        run = self.ingestion_run_service.create_pending_run(db, source.id, run_type, trigger_type)
+        run = self.ingestion_run_service.mark_running(db, run)
 
         logger.info(
             "ingestion_run_started",
@@ -76,7 +63,7 @@ class IngestionService:
             config=redact_config(source.config_json),
         )
 
-        previous_cursor = self._latest_cursor(db, source.id)
+        previous_cursor = self.ingestion_run_service.latest_cursor(db, source.id)
         request = FetchRequest(
             run_type=run_type,
             trigger_type=trigger_type,
@@ -89,16 +76,15 @@ class IngestionService:
         try:
             result = connector.fetch_incremental(request)
             self._persist_connector_config_updates(db, source, connector)
-            raw_objects, duplicates = self._persist_items(db, source, run, result.items)
-            run.status = "completed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.records_fetched_count = len(raw_objects)
-            run.duplicates_detected_count = duplicates
-            run.cursor_state = result.cursor_state
-            run.metadata_json = result.metadata
-            db.add(run)
-            db.commit()
-            db.refresh(run)
+            persisted = self.raw_item_ingestion_service.persist_items(db, source, run.id, result.items)
+            run = self.ingestion_run_service.mark_completed(
+                db,
+                run,
+                records_fetched_count=len(persisted.raw_objects),
+                duplicates_detected_count=persisted.duplicates_detected_count,
+                cursor_state=result.cursor_state,
+                metadata_json=result.metadata,
+            )
             logger.info(
                 "ingestion_run_completed",
                 source_id=source.id,
@@ -108,11 +94,7 @@ class IngestionService:
             )
             return run
         except Exception as exc:
-            run.status = "failed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.error_message = str(exc)
-            db.add(run)
-            db.commit()
+            run = self.ingestion_run_service.mark_failed(db, run, str(exc))
             logger.exception(
                 "ingestion_run_failed",
                 source_id=source.id,
@@ -130,53 +112,50 @@ class IngestionService:
         payload: dict[str, Any] | list[Any] | str,
         external_object_id: str | None = None,
         external_parent_id: str | None = None,
-        event_timestamp: datetime | None = None,
+        event_timestamp: Any = None,
         content_type: str = "application/json",
         source_channel: str = "webhook",
         original_filename: str | None = None,
         metadata_json: dict[str, Any] | None = None,
     ) -> tuple[IngestionRun, RawObject]:
         """Persist a single webhook payload as an ingestion run and raw object."""
-        run = self.create_run(db, source.id, run_type="incremental", trigger_type="webhook")
-        run.status = "running"
-        run.started_at = datetime.now(tz=UTC)
-        db.add(run)
-        db.commit()
-        db.refresh(run)
+        run = self.ingestion_run_service.create_pending_run(
+            db,
+            source.id,
+            run_type="incremental",
+            trigger_type="webhook",
+        )
+        run = self.ingestion_run_service.mark_running(db, run)
 
         try:
-            raw_item = RawFetchItem(
-                object_type=object_type,
-                external_object_id=external_object_id,
-                external_parent_id=external_parent_id,
-                payload=payload,
-                event_timestamp=event_timestamp,
-                content_type=content_type,
-                source_channel=source_channel,
-                original_filename=original_filename,
-                metadata=metadata_json or {},
-            )
-            raw_objects, duplicates = self._persist_items(
+            persisted = self.raw_item_ingestion_service.persist_items(
                 db,
                 source,
-                run,
-                [raw_item],
+                run.id,
+                [
+                    RawFetchItem(
+                        object_type=object_type,
+                        external_object_id=external_object_id,
+                        external_parent_id=external_parent_id,
+                        payload=payload,
+                        event_timestamp=event_timestamp,
+                        content_type=content_type,
+                        source_channel=source_channel,
+                        original_filename=original_filename,
+                        metadata=metadata_json or {},
+                    )
+                ],
             )
-            run.status = "completed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.records_fetched_count = len(raw_objects)
-            run.duplicates_detected_count = duplicates
-            run.metadata_json = {"webhook_object_type": object_type}
-            db.add(run)
-            db.commit()
-            db.refresh(run)
-            return run, raw_objects[0]
+            run = self.ingestion_run_service.mark_completed(
+                db,
+                run,
+                records_fetched_count=len(persisted.raw_objects),
+                duplicates_detected_count=persisted.duplicates_detected_count,
+                metadata_json={"webhook_object_type": object_type},
+            )
+            return run, persisted.raw_objects[0]
         except Exception as exc:
-            run.status = "failed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.error_message = str(exc)
-            db.add(run)
-            db.commit()
+            run = self.ingestion_run_service.mark_failed(db, run, str(exc))
             logger.exception(
                 "ingestion_run_failed",
                 source_id=source.id,
@@ -196,30 +175,20 @@ class IngestionService:
         metadata_json: dict[str, Any] | None = None,
     ) -> IngestionRun:
         """Persist a prepared batch of raw items as a single ingestion run."""
-        run = self.create_run(db, source.id, run_type=run_type, trigger_type=trigger_type)
-        run.status = "running"
-        run.started_at = datetime.now(tz=UTC)
-        db.add(run)
-        db.commit()
-        db.refresh(run)
+        run = self.ingestion_run_service.create_pending_run(db, source.id, run_type, trigger_type)
+        run = self.ingestion_run_service.mark_running(db, run)
 
         try:
-            raw_objects, duplicates = self._persist_items(db, source, run, items)
-            run.status = "completed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.records_fetched_count = len(raw_objects)
-            run.duplicates_detected_count = duplicates
-            run.metadata_json = metadata_json or {}
-            db.add(run)
-            db.commit()
-            db.refresh(run)
-            return run
+            persisted = self.raw_item_ingestion_service.persist_items(db, source, run.id, items)
+            return self.ingestion_run_service.mark_completed(
+                db,
+                run,
+                records_fetched_count=len(persisted.raw_objects),
+                duplicates_detected_count=persisted.duplicates_detected_count,
+                metadata_json=metadata_json or {},
+            )
         except Exception as exc:
-            run.status = "failed"
-            run.completed_at = datetime.now(tz=UTC)
-            run.error_message = str(exc)
-            db.add(run)
-            db.commit()
+            run = self.ingestion_run_service.mark_failed(db, run, str(exc))
             logger.exception(
                 "ingestion_run_failed",
                 source_id=source.id,
@@ -230,13 +199,11 @@ class IngestionService:
 
     def list_runs(self, db: Session, offset: int = 0, limit: int = 100) -> tuple[list[IngestionRun], int]:
         """List ingestion runs."""
-        items = list(db.scalars(select(IngestionRun).offset(offset).limit(limit)))
-        total = db.scalar(select(func.count()).select_from(IngestionRun)) or 0
-        return items, total
+        return self.ingestion_run_service.list_runs(db, offset=offset, limit=limit)
 
     def get_run(self, db: Session, run_id: int) -> IngestionRun | None:
         """Return an ingestion run by id."""
-        return db.get(IngestionRun, run_id)
+        return self.ingestion_run_service.get_run(db, run_id)
 
     def list_runs_for_source(
         self,
@@ -246,31 +213,20 @@ class IngestionService:
         limit: int = 100,
     ) -> tuple[list[IngestionRun], int]:
         """List runs for a source."""
-        items = list(
-            db.scalars(
-                select(IngestionRun).where(IngestionRun.source_id == source_id).offset(offset).limit(limit)
-            )
+        return self.ingestion_run_service.list_runs_for_source(
+            db,
+            source_id,
+            offset=offset,
+            limit=limit,
         )
-        total = db.scalar(
-            select(func.count()).select_from(IngestionRun).where(IngestionRun.source_id == source_id)
-        ) or 0
-        return items, total
 
-    def _latest_cursor(self, db: Session, source_id: int) -> dict[str, Any] | None:
-        latest_run = db.scalar(
-            select(IngestionRun)
-            .where(IngestionRun.source_id == source_id, IngestionRun.cursor_state.is_not(None))
-            .order_by(IngestionRun.id.desc())
-            .limit(1)
-        )
-        return latest_run.cursor_state if latest_run else None
+    def _create_connector(self, source: SourceConfig) -> Any:
+        factory = getattr(self.connector_registry, "create_connector", None)
+        if callable(factory):
+            return factory(source.source_system, source.config_json)
+        return self.connector_registry.get_connector(source.source_system, source.config_json)
 
-    def _persist_connector_config_updates(
-        self,
-        db: Session,
-        source: SourceConfig,
-        connector: Any,
-    ) -> None:
+    def _persist_connector_config_updates(self, db: Session, source: SourceConfig, connector: Any) -> None:
         updates = connector.runtime_config_updates()
         if not updates:
             return
@@ -278,52 +234,3 @@ class IngestionService:
         db.add(source)
         db.commit()
         db.refresh(source)
-
-    def _persist_items(
-        self,
-        db: Session,
-        source: SourceConfig,
-        run: IngestionRun,
-        items: list[RawFetchItem],
-    ) -> tuple[list[RawObject], int]:
-        raw_objects: list[RawObject] = []
-        duplicates = 0
-        for item in items:
-            fetched_at = datetime.now(tz=UTC)
-            storage_path = self.storage.save_json_payload(
-                source_system=source.source_system,
-                run_id=run.id,
-                object_type=item.object_type,
-                object_id=item.external_object_id,
-                payload=item.payload if isinstance(item.payload, (dict, list)) else {"raw": item.payload},
-                fetched_at=fetched_at,
-            )
-            raw_object = self.raw_object_service.create(
-                db,
-                source_id=source.id,
-                ingestion_run_id=run.id,
-                source_channel=item.source_channel,
-                source_system=source.source_system,
-                external_object_type=item.object_type,
-                external_object_id=item.external_object_id,
-                external_parent_id=item.external_parent_id,
-                event_timestamp=item.event_timestamp,
-                original_filename=item.original_filename,
-                content_type=item.content_type,
-                payload_storage_path=storage_path,
-                raw_payload_ref=storage_path,
-                metadata_json=item.metadata,
-                payload=item.payload,
-            )
-            db.flush()
-            decision = self.dedupe_service.detect(db, raw_object)
-            raw_object.duplicate_status = decision.status
-            raw_object.duplicate_of_id = decision.duplicate_of_id
-            raw_object.dedupe_reason = decision.reason
-            if decision.status != "unique":
-                duplicates += 1
-            db.add(raw_object)
-            if isinstance(item.payload, dict):
-                self.normalization_service.normalize_raw_object(db, raw_object, item.payload)
-            raw_objects.append(raw_object)
-        return raw_objects, duplicates

@@ -10,6 +10,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.models.source_config import SourceConfig
+from app.services.structured_tabular_import_service import StructuredTabularImportService
 
 
 class OpenAITabularImportService:
@@ -23,6 +24,7 @@ class OpenAITabularImportService:
         self.api_key = settings.openai_api_key
         self.base_url = settings.openai_base_url.rstrip("/")
         self.model = settings.openai_gift_extraction_model
+        self.structured_import_service = StructuredTabularImportService()
 
     def extract(
         self,
@@ -33,6 +35,13 @@ class OpenAITabularImportService:
         source: SourceConfig,
     ) -> dict[str, Any]:
         """Upload the file to OpenAI and return canonical gift JSON."""
+        structured_extraction = self.structured_import_service.extract(
+            content=content,
+            filename=filename,
+            source=source,
+        )
+        if structured_extraction is not None:
+            return structured_extraction
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY is required for OpenAI-backed file imports.")
         extension = self._extension(filename)

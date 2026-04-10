@@ -1,17 +1,18 @@
-# Gift Ingestion Backend
+# Gift Ingestion Platform
 
-Connector-first FastAPI backend for nonprofit gift-source ingestion. Phase 1 is focused on reliable data fetching, raw payload retention, ingestion run tracking, and duplicate-aware preprocessing for a single organization.
+Connector-first FastAPI backend plus a dedicated Next.js operator console for nonprofit gift-source ingestion. The backend remains the source of truth for ingestion, normalization, run orchestration, and file imports; the frontend is a production-facing operator workspace on top of those APIs.
 
-A small operator console is available at `/` for common source and sync actions, while Swagger remains available at `/docs`.
+The legacy inline operator console is still available at `/`, while the new frontend lives under `frontend/`.
 
 ## Architecture
 
 The project is intentionally modular and single-organization only:
 
 - `app/api`: operator/developer-facing HTTP endpoints.
-- `app/api/routes/ui.py`: lightweight operator console for manual workflows.
+- `app/api/routes/ui.py`: backend UI endpoints plus the legacy inline fallback console.
 - `app/connectors`: pluggable ingestion connectors. OneCause, Pledge, Every.org, and Gmail are implemented; generic email, shared-folder, and portal-export remain scaffolded as first-class non-API patterns.
 - `app/services`: orchestration and persistence services for sources, raw objects, and ingestion runs.
+- `frontend`: Next.js operator console with a sidebar, workspace tabs, source controls, run history, and canonical records review.
 - `app/storage`: raw payload storage abstraction. Filesystem storage is the initial backend.
 - `app/dedupe`: duplicate candidate detection that flags rather than deletes.
 - `app/parsers`: lightweight metadata extraction hooks for JSON, CSV, XLSX, PDF, and email payloads.
@@ -56,6 +57,7 @@ alembic/
 tests/
 sample_data/
 scripts/
+frontend/
 ```
 
 ## Setup
@@ -66,7 +68,7 @@ scripts/
 
 PostgreSQL remains the intended production database, but the current local development setup in this workspace uses SQLite for a simpler manual run flow.
 
-### Local Environment (Manual SQLite Setup)
+### Backend Setup (Manual SQLite Setup)
 
 1. Copy `.env.example` to `.env`.
 2. For local manual development, set:
@@ -94,9 +96,25 @@ uvicorn app.main:app --reload
 
 7. Open:
 
-- UI: `http://localhost:8000/`
+- Legacy UI: `http://localhost:8000/`
 - Swagger: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/api/v1/health`
+
+### Frontend Setup (Next.js Operator Console)
+
+After the backend is running:
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+Open:
+
+- Production UI: `http://localhost:3000/`
+- FastAPI backend: `http://localhost:8000/`
 
 ### Local Environment (requirements.txt Alternative)
 
@@ -121,6 +139,7 @@ Defined in `.env.example`:
 - `APP_ENV`
 - `APP_NAME`
 - `API_PREFIX`
+- `BACKEND_CORS_ORIGINS`
 - `DATABASE_URL`
 - `RAW_STORAGE_ROOT`
 - `LOG_LEVEL`
@@ -173,6 +192,9 @@ make test
 make lint
 make migrate
 make seed
+make frontend-install
+make frontend-dev
+make frontend-build
 ```
 
 ## Recommended Local Run Flow
@@ -202,6 +224,15 @@ alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+In a second terminal:
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
 ## API Surface
 
 Base prefix: `/api/v1`
@@ -227,6 +258,8 @@ Base prefix: `/api/v1`
 - `GET /normalized/gifts`
 - `POST /scheduler/run-due`
 - `GET /` operator console
+- `GET /api/v1/ui/console-state`
+- `GET /api/v1/ui/records`
 
 Gmail uses the generic source lifecycle:
 
@@ -235,6 +268,13 @@ Gmail uses the generic source lifecycle:
 - `GET /sources/{id}/ingestion-runs`
 
 Gmail extraction uses the OpenAI Responses API with structured JSON output. Supported attachments are uploaded as files and passed to the model; CSV, TSV, TXT, PDF, and XLSX can be analyzed with file inputs and Code Interpreter. Unsupported attachment types are still retained in raw storage for lineage.
+
+Manual CSV imports now have two paths:
+
+- Known structured donation exports, such as the `donations.csv` shape in this repo, are parsed deterministically without OpenAI.
+- Unknown tabular files still fall back to the OpenAI extraction path.
+
+Both land in the same canonical `staging_gifts` model.
 
 ## OneCause Configuration
 
